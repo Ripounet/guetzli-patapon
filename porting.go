@@ -1,5 +1,11 @@
 package guetzli_patapon
 
+import (
+	"fmt"
+	"io"
+	"os"
+)
+
 func assert(b bool) {
 	if !b {
 		panic("Assertion failed :(")
@@ -58,3 +64,9 @@ func cloneMatrixFloat64(src [][]float64) (dst [][]float64) {
 	}
 	return dst
 }
+
+func fprintf(w io.Writer, format string, a ...interface{}) {
+	_, _ = fmt.Fprintf(w, format, a...)
+}
+
+var stderr = os.Stderr

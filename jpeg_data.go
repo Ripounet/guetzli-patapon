@@ -123,6 +123,12 @@ type JPEGScanInfo struct {
 
 type coeff_t int16
 
+func zeroCoeffs(c []coeff_t) {
+	for i := range c {
+		c[i] = 0
+	}
+}
+
 // Represents one component of a jpeg file.
 type JPEGComponent struct {
 	// One-byte id of the component.
