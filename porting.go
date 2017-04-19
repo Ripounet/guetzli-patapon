@@ -56,6 +56,13 @@ func std_abs(a int) int {
 	return a
 }
 
+func minusOr0(a, b int) int {
+	if a < b {
+		return 0
+	}
+	return a - b
+}
+
 func cloneMatrixFloat64(src [][]float64) (dst [][]float64) {
 	dst = make([][]float64, len(src))
 	for i := range src {
