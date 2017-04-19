@@ -99,6 +99,3 @@ func init() {
 func EncodeRGBToJpeg(rgb []byte, w, h int, jpg *JPEGData) bool {
 	return EncodeRGBToJpegQ(rgb, w, h, quantOnes[:], jpg)
 }
-
-// TODO fdct.go
-var ComputeBlockDCT func([]coeff_t)
