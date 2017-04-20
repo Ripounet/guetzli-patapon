@@ -64,6 +64,20 @@ func std_maxFloa32(a, b float32) float32 {
 	return a
 }
 
+func std_minUint32(a, b uint32) uint32 {
+	if b < a {
+		return b
+	}
+	return a
+}
+
+func std_maxUint32(a, b uint32) uint32 {
+	if b > a {
+		return b
+	}
+	return a
+}
+
 func std_abs(a int) int {
 	if a < 0 {
 		return -a
