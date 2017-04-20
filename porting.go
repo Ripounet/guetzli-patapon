@@ -72,6 +72,21 @@ func cloneMatrixFloat64(src [][]float64) (dst [][]float64) {
 	return dst
 }
 
+func cloneMatrixFloat32(src [][]float32) (dst [][]float32) {
+	dst = make([][]float32, len(src))
+	for i := range src {
+		dst[i] = make([]float32, len(src[i]))
+		copy(dst[i], src[i])
+	}
+	return dst
+}
+
+func cloneSliceFloat32(src []float32) (dst []float32) {
+	dst = make([]float32, len(src))
+	copy(dst, src)
+	return dst
+}
+
 func fprintf(w io.Writer, format string, a ...interface{}) {
 	_, _ = fmt.Fprintf(w, format, a...)
 }
