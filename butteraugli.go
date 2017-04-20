@@ -1,8 +1,6 @@
 package guetzli_patapon
 
-// TODO
-// TODO
-// TODO
+import "math"
 
 type ButteraugliButteraugliComparator struct {
 	xsize_, ysize_         int
@@ -19,8 +17,13 @@ const (
 	kGlobalScale                  = 1.0 / kInternalGoodQualityThreshold
 )
 
-func DotProduct(u, v [3]float64) float64 {
+func DotProduct(u, v []float64) float64 {
 	return u[0]*v[0] + u[1]*v[1] + u[2]*v[2]
+}
+
+// weird variant of DotProduct
+func DotProduct_(u []float32, v []float64) float64 {
+	return float64(u[0])*v[0] + float64(u[1])*v[1] + float64(u[2])*v[2]
 }
 
 // Computes a horizontal convolution and transposes the result.
@@ -39,15 +42,15 @@ func Convolution(xsize, ysize int,
 	for x, ox := 0, 0; x < xsize; x, ox = x+xstep, ox+1 {
 		minx := minusOr0(x, offset)
 		maxx := std_min(xsize, x+length-offset) - 1
-		weight := 0.0
+		var weight float32
 		for j := minx; j <= maxx; j++ {
 			weight += multipliers[j-x+offset]
 		}
 		// Interpolate linearly between the no-border scaling and border scaling.
-		weight = (1.0-border_ratio)*weight + border_ratio*weight_no_border
+		weight = (1.0-float32(border_ratio))*weight + float32(border_ratio)*weight_no_border
 		scale := 1.0 / weight
 		for y := 0; y < ysize; y++ {
-			sum := 0.0
+			var sum float32
 			for j := minx; j <= maxx; j++ {
 				sum += inp[y*xsize+j] * multipliers[j-x+offset]
 			}
@@ -61,27 +64,27 @@ func Blur(xsize, ysize int, channel []float32, sigma, border_ratio float64) {
 	m := 2.25 // Accuracy increases when m is increased.
 	scaler := -1.0 / (2 * sigma * sigma)
 	// For m = 9.0: exp(-scaler * diff * diff) < 2^ {-52}
-	diff := std_max(1, m*fabs(sigma))
+	diff := std_max(1, int(m*math.Abs(sigma)))
 	expn_size := 2*diff + 1
 	expn := make([]float32, expn_size)
 	for i := -diff; i <= diff; i++ {
-		expn[i+diff] = float32(exp(scaler * i * i))
+		expn[i+diff] = float32(math.Exp(scaler * float64(i*i)))
 	}
 	xstep := std_max(1, int(sigma/3))
 	ystep := xstep
 	dxsize := (xsize + xstep - 1) / xstep
 	dysize := (ysize + ystep - 1) / ystep
 	tmp := make([]float32, dxsize*ysize)
-	Convolution(xsize, ysize, xstep, expn_size, diff, expn.data(), channel,
+	Convolution(xsize, ysize, xstep, expn_size, diff, expn, channel,
 		border_ratio,
-		tmp.data())
-	float * output = channel
+		tmp)
+	output := channel
 	var downsampled_output []float32
 	if xstep > 1 {
-		downsampled_output = make(X, dxsize*dysize)
-		output = downsampled_output.data()
+		downsampled_output = make([]float32, dxsize*dysize)
+		output = downsampled_output
 	}
-	Convolution(ysize, dxsize, ystep, expn_size, diff, expn.data(), tmp.data(),
+	Convolution(ysize, dxsize, ystep, expn_size, diff, expn, tmp,
 		border_ratio, output)
 	if xstep > 1 {
 		for y := 0; y < ysize; y++ {
@@ -196,18 +199,18 @@ func MakeLowFreqColorDiffDy() []float64 {
 func GetLowFreqColorDiffDy() []float64 {
 	kLut := MakeLowFreqColorDiffDy()
 	// TODO make only once?
-	return kLut.data()
+	return kLut
 }
 
 func Interpolate(array []float64, size int, sx float64) float64 {
-	ix := fabs(sx)
+	ix := math.Abs(sx)
 	assert(ix < 10000)
-	baseix := static_cast < int > (ix)
+	baseix := int(ix)
 	var res float64
 	if baseix >= size-1 {
 		res = array[size-1]
 	} else {
-		mix := ix - baseix
+		mix := ix - float64(baseix)
 		nextix := baseix + 1
 		res = array[baseix] + mix*(array[nextix]-array[baseix])
 	}
@@ -221,13 +224,13 @@ func InterpolateClampNegative(array []float64, size int, sx float64) float64 {
 	if sx < 0 {
 		sx = 0
 	}
-	ix := fabs(sx)
-	baseix := static_cast < int > (ix)
+	ix := math.Abs(sx)
+	baseix := int(ix)
 	var res float64
 	if baseix >= size-1 {
 		res = array[size-1]
 	} else {
-		mix := ix - baseix
+		mix := ix - float64(baseix)
 		nextix := baseix + 1
 		res = array[baseix] + mix*(array[nextix]-array[baseix])
 	}
@@ -244,7 +247,7 @@ func RgbToXyb(r, g, b float64, valx, valy, valz *float64) {
 	*valz = b
 }
 
-func XybToVals(r, g, b float64, valx, valy, valz *float64) {
+func XybToVals(x, y, z float64, valx, valy, valz *float64) {
 	const xmul = 0.758304045695
 	const ymul = 2.28148649801
 	const zmul = 1.87816926918
@@ -254,7 +257,7 @@ func XybToVals(r, g, b float64, valx, valy, valz *float64) {
 }
 
 // Rough psychovisual distance to gray for low frequency colors.
-func XybLowFreqToVals(r, g, b float64, valx, valy, valz *float64) {
+func XybLowFreqToVals(x, y, z float64, valx, valy, valz *float64) {
 	const xmul = 6.64482198135
 	const ymul = 0.837846224276
 	const zmul = 7.34905756986
@@ -283,7 +286,7 @@ func XybDiffLowFreqSquaredAccumulate(r0, g0, b0,
 	var valx1, valy1, valz1 float64
 	XybLowFreqToVals(r0, g0, b0, &valx0, &valy0, &valz0)
 	if r1 == 0.0 && g1 == 0.0 && b1 == 0.0 {
-		PROFILER_ZONE("XybDiff r1=g1=b1=0")
+		// PROFILER_ZONE("XybDiff r1=g1=b1=0")
 		res[0] += factor * valx0 * valx0
 		res[1] += factor * valy0 * valy0
 		res[2] += factor * valz0 * valz0
@@ -302,8 +305,20 @@ func XybDiffLowFreqSquaredAccumulate(r0, g0, b0,
 
 type Complex complex128
 
+func (c Complex) withReal(r float64) Complex {
+	return Complex(complex(r, imag(c)))
+}
+
+func (c Complex) withImag(i float64) Complex {
+	return Complex(complex(real(c), i))
+}
+
+func NewComplex(r, i float64) Complex {
+	return Complex(complex(r, i))
+}
+
 func abssq(c Complex) float64 {
-	return c.real*c.real + c.imag*c.imag
+	return real(c)*real(c) + imag(c)*imag(c)
 }
 
 func TransposeBlock(data []Complex) {
@@ -317,31 +332,31 @@ func TransposeBlock(data []Complex) {
 //  D. J. Bernstein's Fast Fourier Transform algorithm on 4 elements.
 func FFT4(a []Complex) {
 	var t1, t2, t3, t4, t5, t6, t7, t8 float64
-	t5 = a[2].real
-	t1 = a[0].real - t5
-	t7 = a[3].real
-	t5 += a[0].real
-	t3 = a[1].real - t7
-	t7 += a[1].real
+	t5 = real(a[2])
+	t1 = real(a[0]) - t5
+	t7 = real(a[3])
+	t5 += real(a[0])
+	t3 = real(a[1]) - t7
+	t7 += real(a[1])
 	t8 = t5 + t7
-	a[0].real = t8
+	a[0] = a[0].withReal(t8)
 	t5 -= t7
-	a[1].real = t5
-	t6 = a[2].imag
-	t2 = a[0].imag - t6
-	t6 += a[0].imag
-	t5 = a[3].imag
-	a[2].imag = t2 + t3
+	a[1] = a[1].withReal(t5)
+	t6 = imag(a[2])
+	t2 = imag(a[0]) - t6
+	t6 += imag(a[0])
+	t5 = imag(a[3])
+	a[2] = a[2].withImag(t2 + t3)
 	t2 -= t3
-	a[3].imag = t2
-	t4 = a[1].imag - t5
-	a[3].real = t1 + t4
+	a[3] = a[3].withImag(t2)
+	t4 = imag(a[1]) - t5
+	a[3] = a[3].withReal(t1 + t4)
 	t1 -= t4
-	a[2].real = t1
-	t5 += a[1].imag
-	a[0].imag = t6 + t5
+	a[2] = a[2].withReal(t1)
+	t5 += imag(a[1])
+	a[0] = a[0].withImag(t6 + t5)
 	t6 -= t5
-	a[1].imag = t6
+	a[1] = a[1].withImag(t6)
 }
 
 const kSqrtHalf = 0.70710678118654752440084436210484903
@@ -350,55 +365,54 @@ const kSqrtHalf = 0.70710678118654752440084436210484903
 func FFT8(a []Complex) {
 	var t1, t2, t3, t4, t5, t6, t7, t8 float64
 
-	t7 = a[4].imag
-	t4 = a[0].imag - t7
-	t7 += a[0].imag
-	a[0].imag = t7
+	t7 = imag(a[4])
+	t4 = imag(a[0]) - t7
+	t7 += imag(a[0])
+	a[0] = a[0].withImag(t7)
 
-	t8 = a[6].real
-	t5 = a[2].real - t8
-	t8 += a[2].real
-	a[2].real = t8
+	t8 = real(a[6])
+	t5 = real(a[2]) - t8
+	t8 += real(a[2])
+	a[2] = a[2].withReal(t8)
 
-	t7 = a[6].imag
-	a[6].imag = t4 - t5
+	t7 = imag(a[6])
+	a[6] = a[6].withImag(t4 - t5)
 	t4 += t5
-	a[4].imag = t4
 
-	t6 = a[2].imag - t7
-	t7 += a[2].imag
-	a[2].imag = t7
+	t6 = imag(a[2]) - t7
+	t7 += imag(a[2])
+	a[2] = a[2].withImag(t7)
 
-	t8 = a[4].real
-	t3 = a[0].real - t8
-	t8 += a[0].real
-	a[0].real = t8
+	t8 = real(a[4])
+	t3 = real(a[0]) - t8
+	t8 += real(a[0])
+	a[0] = a[0].withReal(t8)
 
-	a[4].real = t3 - t6
+	a[4] = a[4].withReal(t3 - t6)
 	t3 += t6
-	a[6].real = t3
+	a[6] = a[6].withReal(t3)
 
-	t7 = a[5].real
-	t3 = a[1].real - t7
-	t7 += a[1].real
-	a[1].real = t7
+	t7 = real(a[5])
+	t3 = real(a[1]) - t7
+	t7 += real(a[1])
+	a[1] = a[1].withReal(t7)
 
-	t8 = a[7].imag
-	t6 = a[3].imag - t8
-	t8 += a[3].imag
-	a[3].imag = t8
+	t8 = imag(a[7])
+	t6 = imag(a[3]) - t8
+	t8 += imag(a[3])
+	a[3] = a[3].withImag(t8)
 	t1 = t3 - t6
 	t3 += t6
 
-	t7 = a[5].imag
-	t4 = a[1].imag - t7
-	t7 += a[1].imag
-	a[1].imag = t7
+	t7 = imag(a[5])
+	t4 = imag(a[1]) - t7
+	t7 += imag(a[1])
+	a[1] = a[1].withImag(t7)
 
-	t8 = a[7].real
-	t5 = a[3].real - t8
-	t8 += a[3].real
-	a[3].real = t8
+	t8 = real(a[7])
+	t5 = real(a[3]) - t8
+	t8 += real(a[3])
+	a[3] = a[3].withReal(t8)
 
 	t2 = t4 - t5
 	t4 += t5
@@ -406,25 +420,25 @@ func FFT8(a []Complex) {
 	t6 = t1 - t4
 	t8 = kSqrtHalf
 	t6 *= t8
-	a[5].real = a[4].real - t6
+	a[5] -= NewComplex(t6, 0)
 	t1 += t4
 	t1 *= t8
-	a[5].imag = a[4].imag - t1
-	t6 += a[4].real
-	a[4].real = t6
-	t1 += a[4].imag
-	a[4].imag = t1
+	a[5] -= NewComplex(0, t1)
+	t6 += real(a[4])
+	a[4] = a[4].withReal(t6)
+	t1 += imag(a[4])
+	a[4] = a[4].withImag(t1)
 
 	t5 = t2 - t3
 	t5 *= t8
-	a[7].imag = a[6].imag - t5
+	a[7] = a[7].withImag(imag(a[6]) - t5)
 	t2 += t3
 	t2 *= t8
-	a[7].real = a[6].real - t2
-	t2 += a[6].real
-	a[6].real = t2
-	t5 += a[6].imag
-	a[6].imag = t5
+	a[7] = a[7].withReal(real(a[6]) - t2)
+	t2 += real(a[6])
+	a[6] = a[6].withReal(t2)
+	t5 += imag(a[6])
+	a[6] = a[6].withImag(t5)
 
 	FFT4(a)
 
@@ -448,61 +462,61 @@ func RealFFT8(in []float64, out []Complex) {
 	t8 = in[6]
 	t5 = in[2] - t8
 	t8 += in[2]
-	out[2].real = t8
-	out[6].imag = -t5
-	out[4].imag = t5
+	out[2] = out[2].withReal(t8)
+	out[6] = out[6].withImag(-t5)
+	out[4] = out[4].withImag(t5)
 	t8 = in[4]
 	t3 = in[0] - t8
 	t8 += in[0]
-	out[0].real = t8
-	out[4].real = t3
-	out[6].real = t3
+	out[0] = out[0].withReal(t8)
+	out[4] = out[4].withReal(t3)
+	out[6] = out[6].withReal(t3)
 	t7 = in[5]
 	t3 = in[1] - t7
 	t7 += in[1]
-	out[1].real = t7
+	out[1] = out[1].withReal(t7)
 	t8 = in[7]
 	t5 = in[3] - t8
 	t8 += in[3]
-	out[3].real = t8
+	out[3] = out[3].withReal(t8)
 	t2 = -t5
 	t6 = t3 - t5
 	t8 = kSqrtHalf
 	t6 *= t8
-	out[5].real = out[4].real - t6
+	out[5] = out[5].withReal(real(out[4]) - t6)
 	t1 = t3 + t5
 	t1 *= t8
-	out[5].imag = out[4].imag - t1
-	t6 += out[4].real
-	out[4].real = t6
-	t1 += out[4].imag
-	out[4].imag = t1
+	out[5] = out[5].withImag(imag(out[4]) - t1)
+	t6 += real(out[4])
+	out[4] = out[4].withReal(t6)
+	t1 += imag(out[4])
+	out[4] = out[4].withImag(t1)
 	t5 = t2 - t3
 	t5 *= t8
-	out[7].imag = out[6].imag - t5
+	out[7] = out[7].withImag(imag(out[6]) - t5)
 	t2 += t3
 	t2 *= t8
-	out[7].real = out[6].real - t2
-	t2 += out[6].real
-	out[6].real = t2
-	t5 += out[6].imag
-	out[6].imag = t5
-	t5 = out[2].real
-	t1 = out[0].real - t5
-	t7 = out[3].real
-	t5 += out[0].real
-	t3 = out[1].real - t7
-	t7 += out[1].real
+	out[7] = out[7].withReal(real(out[6]) - t2)
+	t2 += real(out[6])
+	out[6] = out[6].withReal(t2)
+	t5 += imag(out[6])
+	out[6] = out[6].withImag(t5)
+	t5 = real(out[2])
+	t1 = real(out[0]) - t5
+	t7 = real(out[3])
+	t5 += real(out[0])
+	t3 = real(out[1]) - t7
+	t7 += real(out[1])
 	t8 = t5 + t7
-	out[0].real = t8
+	out[0] = out[0].withReal(t8)
 	t5 -= t7
-	out[1].real = t5
-	out[2].imag = t3
-	out[3].imag = -t3
-	out[3].real = t1
-	out[2].real = t1
-	out[0].imag = 0
-	out[1].imag = 0
+	out[1] = out[1].withReal(t5)
+	out[2] = out[2].withImag(t3)
+	out[3] = out[3].withImag(-t3)
+	out[3] = out[3].withReal(t1)
+	out[2] = out[2].withReal(t1)
+	out[0] = out[0].withImag(0)
+	out[1] = out[1].withImag(0)
 
 	// Reorder to the correct output order.
 	// TODO: Modify the above computation so that this is not needed.
@@ -523,19 +537,19 @@ func ButteraugliFFTSquared(block []float64) {
 	block_c := make([]Complex, kBlockSize)
 	assert(kBlockEdge == 8)
 	for y := 0; y < kBlockEdge; y++ {
-		RealFFT8(block+y*kBlockEdge, block_c+y*kBlockEdge)
+		RealFFT8(block[y*kBlockEdge:], block_c[y*kBlockEdge:])
 	}
 	TransposeBlock(block_c)
-	r0 := make(float64, kBlockEdge)
-	r1 := make(float64, kBlockEdge)
+	r0 := make([]float64, kBlockEdge)
+	r1 := make([]float64, kBlockEdge)
 	for x := 0; x < kBlockEdge; x++ {
-		r0[x] = block_c[x].real
-		r1[x] = block_c[kBlockHalf+x].real
+		r0[x] = real(block_c[x])
+		r1[x] = real(block_c[kBlockHalf+x])
 	}
 	RealFFT8(r0, block_c)
-	RealFFT8(r1, block_c+kBlockHalf)
+	RealFFT8(r1, block_c[kBlockHalf:])
 	for y := 1; y < kBlockEdgeHalf; y++ {
-		FFT8(block_c + y*kBlockEdge)
+		FFT8(block_c[y*kBlockEdge:])
 	}
 	for i := kBlockEdgeHalf; i < kBlockHalf+kBlockEdgeHalf+1; i++ {
 		block[i] = abssq(block_c[i])
@@ -594,18 +608,18 @@ func ButteraugliBlockDiff(xyb0, xyb1 []float64, diff_xyb_dc, diff_xyb_ac, diff_x
 			diff_xyb_edge_dc)
 	}
 
-	double * xyb_avg = xyb0
-	double * xyb_halfdiff = xyb1
+	xyb_avg := xyb0
+	xyb_halfdiff := xyb1
 	for i := 0; i < 3*kBlockSize; i++ {
 		avg := (xyb0[i] + xyb1[i]) / 2
 		halfdiff := (xyb0[i] - xyb1[i]) / 2
 		xyb_avg[i] = avg
 		xyb_halfdiff[i] = halfdiff
 	}
-	double * y_avg = &xyb_avg[kBlockSize]
-	double * x_halfdiff_squared = &xyb_halfdiff[0]
-	double * y_halfdiff = &xyb_halfdiff[kBlockSize]
-	double * z_halfdiff_squared = &xyb_halfdiff[2*kBlockSize]
+	y_avg := xyb_avg[kBlockSize:]
+	x_halfdiff_squared := xyb_halfdiff[0:]
+	y_halfdiff := xyb_halfdiff[kBlockSize:]
+	z_halfdiff_squared := xyb_halfdiff[2*kBlockSize:]
 	ButteraugliFFTSquared(y_avg)
 	ButteraugliFFTSquared(x_halfdiff_squared)
 	ButteraugliFFTSquared(y_halfdiff)
@@ -621,8 +635,8 @@ func ButteraugliBlockDiff(xyb0, xyb1 []float64, diff_xyb_dc, diff_xyb_ac, diff_x
 		diff_xyb_ac[0] += d * xmul * x_halfdiff_squared[i]
 		diff_xyb_ac[2] += d * zmul * z_halfdiff_squared[i]
 
-		y_avg[i] = sqrt(y_avg[i])
-		y_halfdiff[i] = sqrt(y_halfdiff[i])
+		y_avg[i] = math.Sqrt(y_avg[i])
+		y_halfdiff[i] = math.Sqrt(y_halfdiff[i])
 		y0 := y_avg[i] - y_halfdiff[i]
 		y1 := y_avg[i] + y_halfdiff[i]
 		// Remove the impact of small absolute values.
@@ -647,7 +661,7 @@ func Butteraugli8x8CornerEdgeDetectorDiff(
 	blurred0, blurred1 [][]float32,
 	diff_xyb []float64) {
 	// PROFILER_FUNC;
-	local_count := 0
+	local_count := 0.0
 	var local_xyb [3]float64
 	const w = 0.711100840192
 	for k := 0; k < 4; k++ {
@@ -659,26 +673,26 @@ func Butteraugli8x8CornerEdgeDetectorDiff(
 			ix := y*xsize + (x - step)
 			ix2 := ix + 2*step
 			XybDiffLowFreqSquaredAccumulate(
-				w*(blurred0[0][ix]-blurred0[0][ix2]),
-				w*(blurred0[1][ix]-blurred0[1][ix2]),
-				w*(blurred0[2][ix]-blurred0[2][ix2]),
-				w*(blurred1[0][ix]-blurred1[0][ix2]),
-				w*(blurred1[1][ix]-blurred1[1][ix2]),
-				w*(blurred1[2][ix]-blurred1[2][ix2]),
-				1.0, local_xyb)
+				w*float64(blurred0[0][ix]-blurred0[0][ix2]),
+				w*float64(blurred0[1][ix]-blurred0[1][ix2]),
+				w*float64(blurred0[2][ix]-blurred0[2][ix2]),
+				w*float64(blurred1[0][ix]-blurred1[0][ix2]),
+				w*float64(blurred1[1][ix]-blurred1[1][ix2]),
+				w*float64(blurred1[2][ix]-blurred1[2][ix2]),
+				1.0, local_xyb[:])
 			local_count++
 		}
 		if y >= step && y+step < ysize {
 			ix := (y-step)*xsize + x
 			ix2 := ix + 2*step*xsize
 			XybDiffLowFreqSquaredAccumulate(
-				w*(blurred0[0][ix]-blurred0[0][ix2]),
-				w*(blurred0[1][ix]-blurred0[1][ix2]),
-				w*(blurred0[2][ix]-blurred0[2][ix2]),
-				w*(blurred1[0][ix]-blurred1[0][ix2]),
-				w*(blurred1[1][ix]-blurred1[1][ix2]),
-				w*(blurred1[2][ix]-blurred1[2][ix2]),
-				1.0, local_xyb)
+				w*float64(blurred0[0][ix]-blurred0[0][ix2]),
+				w*float64(blurred0[1][ix]-blurred0[1][ix2]),
+				w*float64(blurred0[2][ix]-blurred0[2][ix2]),
+				w*float64(blurred1[0][ix]-blurred1[0][ix2]),
+				w*float64(blurred1[1][ix]-blurred1[1][ix2]),
+				w*float64(blurred1[2][ix]-blurred1[2][ix2]),
+				1.0, local_xyb[:])
 			local_count++
 		}
 	}
@@ -715,17 +729,18 @@ func OpsinAbsorbance(in, out []float64) {
 func GammaMinArg() float64 {
 	var in, out [3]float64
 	OpsinAbsorbance(in[:], out[:])
-	return std_min(out[0], std_min(out[1], out[2]))
+	return std_minFloat64(out[0], std_minFloat64(out[1], out[2]))
 }
 
 func GammaMaxArg() float64 {
 	in := [3]float64{255.0, 255.0, 255.0}
 	var out [3]float64
 	OpsinAbsorbance(in[:], out[:])
-	return std_max(out[0], std_max(out[1], out[2]))
+	return std_maxFloat64(out[0], std_maxFloat64(out[1], out[2]))
 }
 
 func NewButteraugliButteraugliComparator(xsize, ysize, step int) *ButteraugliButteraugliComparator {
+	assert(step <= 4)
 	return &ButteraugliButteraugliComparator{
 		xsize_:      xsize,
 		ysize_:      ysize,
@@ -734,7 +749,6 @@ func NewButteraugliButteraugliComparator(xsize, ysize, step int) *ButteraugliBut
 		res_xsize_:  (xsize + step - 1) / step,
 		res_ysize_:  (ysize + step - 1) / step,
 	}
-	assert(step <= 4)
 }
 
 func MaskHighIntensityChange(xsize, ysize int, c0, c1, xyb0, xyb1 [][]float32) {
@@ -743,20 +757,20 @@ func MaskHighIntensityChange(xsize, ysize int, c0, c1, xyb0, xyb1 [][]float32) {
 		for x := 0; x < xsize; x++ {
 			ix := y*xsize + x
 			ave := [3]float64{
-				(c0[0][ix] + c1[0][ix]) * 0.5,
-				(c0[1][ix] + c1[1][ix]) * 0.5,
-				(c0[2][ix] + c1[2][ix]) * 0.5,
+				float64(c0[0][ix]+c1[0][ix]) * 0.5,
+				float64(c0[1][ix]+c1[1][ix]) * 0.5,
+				float64(c0[2][ix]+c1[2][ix]) * 0.5,
 			}
-			sqr_max_diff := -1
+			sqr_max_diff := -1.0
 			{
-				offset := [4]int{-1, 1, -static_cast < int > (xsize), static_cast < int > (xsize)}
-				border := [4]int{x == 0, x+1 == xsize, y == 0, y+1 == ysize}
+				offset := [4]int{-1, 1, -int(xsize), int(xsize)}
+				border := [4]bool{x == 0, x+1 == xsize, y == 0, y+1 == ysize}
 				for dir := 0; dir < 4; dir++ {
 					if border[dir] {
 						continue
 					}
 					ix2 := ix + offset[dir]
-					diff := 0.5*(c0[1][ix2]+c1[1][ix2]) - ave[1]
+					diff := 0.5*float64(c0[1][ix2]+c1[1][ix2]) - ave[1]
 					diff *= diff
 					if sqr_max_diff < diff {
 						sqr_max_diff = diff
@@ -777,8 +791,8 @@ func MaskHighIntensityChange(xsize, ysize int, c0, c1, xyb0, xyb1 [][]float32) {
 			// Interpolate lineraly between the average color and the actual
 			// color -- to reduce the importance of this pixel.
 			for i := 0; i < 3; i++ {
-				xyb0[i][ix] = static_cast < float > (mix[i]*c0[i][ix] + (1-mix[i])*ave[i])
-				xyb1[i][ix] = static_cast < float > (mix[i]*c1[i][ix] + (1-mix[i])*ave[i])
+				xyb0[i][ix] = float32(mix[i])*c0[i][ix] + (1 - float32(mix[i])*float32(ave[i]))
+				xyb1[i][ix] = float32(mix[i])*c1[i][ix] + (1 - float32(mix[i])*float32(ave[i]))
 			}
 		}
 	}
@@ -800,7 +814,7 @@ func SimpleGamma(v float64) float64 {
 	}
 	const offset = 0.156775786057
 	const scale = 8.898059160493739
-	retval := scale * (offset + pow(v, kGamma))
+	retval := scale * (offset + math.Pow(v, kGamma))
 	return retval
 }
 
@@ -841,19 +855,19 @@ type RationalPolynomial struct {
 // Evaluates the polynomial at x (in [min_value, max_value]).
 func (rp *RationalPolynomial) EvalAt(x float32) float64 {
 	// First normalize to [0, 1].
-	x01 := (x - rp.min_value) / (rp.max_value - rp.min_value)
+	x01 := (float64(x) - rp.min_value) / (rp.max_value - rp.min_value)
 	// And then to [-1, 1] domain of Chebyshev polynomials.
 	xc := 2.0*x01 - 1.0
 
-	yp := EvaluatePolynomial(xc, rp.p)
-	yq := EvaluatePolynomial(xc, rp.q)
+	yp := EvaluatePolynomial(xc, rp.p[:], len(rp.p))
+	yq := EvaluatePolynomial(xc, rp.q[:], len(rp.q))
 	if yq == 0.0 {
 		return 0.0
 	}
-	return float32(yp / yq)
+	return yp / yq
 }
 
-func EvaluatePolynomial(x float64, coefficients []float64) float64 {
+func EvaluatePolynomial(x float64, coefficients []float64, N int) float64 {
 	b1 := 0.0
 	b2 := 0.0
 	ClenshawRecursion(N-1, x, coefficients, &b1, &b2)
@@ -884,33 +898,41 @@ func Gamma(v float64) float64 {
 
 func OpsinDynamicsImage(xsize, ysize int, rgb [][]float32) {
 	// PROFILER_FUNC;
-	blurred := rgb
+	blurred := cloneMatrixFloat32(rgb) // TODO PATAPON is this intended to be a copy?
 	const kSigma = 1.1
 	for i := 0; i < 3; i++ {
-		Blur(xsize, ysize, blurred[i].data(), kSigma, 0.0)
+		Blur(xsize, ysize, blurred[i], kSigma, 0.0)
 	}
-	for i := 0; i < rgb[0].size(); i++ {
+	for i := 0; i < len(rgb[0]); i++ {
 		var sensitivity [3]float64
 		{
 			// Calculate sensitivity[3] based on the smoothed image gamma derivative.
-			pre_rgb := [3]float64{blurred[0][i], blurred[1][i], blurred[2][i]}
+			pre_rgb := [3]float64{
+				float64(blurred[0][i]),
+				float64(blurred[1][i]),
+				float64(blurred[2][i]),
+			}
 			var pre_mixed [3]float64
-			OpsinAbsorbance(pre_rgb, pre_mixed)
+			OpsinAbsorbance(pre_rgb[:], pre_mixed[:])
 			sensitivity[0] = Gamma(pre_mixed[0]) / pre_mixed[0]
 			sensitivity[1] = Gamma(pre_mixed[1]) / pre_mixed[1]
 			sensitivity[2] = Gamma(pre_mixed[2]) / pre_mixed[2]
 		}
-		cur_rgb := [3]float64{rgb[0][i], rgb[1][i], rgb[2][i]}
+		cur_rgb := [3]float64{
+			float64(rgb[0][i]),
+			float64(rgb[1][i]),
+			float64(rgb[2][i]),
+		}
 		var cur_mixed [3]float64
-		OpsinAbsorbance(cur_rgb, cur_mixed)
+		OpsinAbsorbance(cur_rgb[:], cur_mixed[:])
 		cur_mixed[0] *= sensitivity[0]
 		cur_mixed[1] *= sensitivity[1]
 		cur_mixed[2] *= sensitivity[2]
 		var x, y, z float64
 		RgbToXyb(cur_mixed[0], cur_mixed[1], cur_mixed[2], &x, &y, &z)
-		rgb[0][i] = static_cast < float > (x)
-		rgb[1][i] = static_cast < float > (y)
-		rgb[2][i] = static_cast < float > (z)
+		rgb[0][i] = float32(x)
+		rgb[1][i] = float32(y)
+		rgb[2][i] = float32(z)
 	}
 }
 
@@ -952,13 +974,12 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) {
 
 				for off_y := 0; off_y < step; off_y++ {
 					for off_x := 0; off_x < step; off_x++ {
-						diffmap_out[(res_y+off_y+s2)*xsize+
-							res_x+off_x+s2] = val
+						diffmap_out[(res_y+off_y+s2)*xsize+res_x+off_x+s2] = val
 					}
 				}
 			}
 		}
-		*diffmap = diffmap_out
+		copy(diffmap, diffmap_out)
 	}
 	{
 		const kSigma = 8.8510880283
@@ -968,11 +989,11 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) {
 		blurred := make([]float32, (xsize-s)*(ysize-s))
 		for y := 0; y < ysize-s; y++ {
 			for x := 0; x < xsize-s; x++ {
-				blurred[y*(xsize-s)+x] = (*diffmap)[(y+s2)*xsize+x+s2]
+				blurred[y*(xsize-s)+x] = diffmap[(y+s2)*xsize+x+s2]
 			}
 		}
 		const border_ratio = 0.03027655136
-		Blur(xsize-s, ysize-s, blurred.data(), kSigma, border_ratio)
+		Blur(xsize-s, ysize-s, blurred, kSigma, border_ratio)
 		for y := 0; y < ysize-s; y++ {
 			for x := 0; x < xsize-s; x++ {
 				diffmap[(y+s2)*xsize+x+s2] += float32(mul1) * blurred[y*(xsize-s)+x]
@@ -982,57 +1003,58 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) {
 	}
 }
 
-func (bbc *ButteraugliButteraugliComparator) DiffmapOpsinDynamicsImage(xyb0_arg, xyb1 [][]float32, result []float32) {
-	if xsize_ < 8 || ysize_ < 8 {
+func (bbc *ButteraugliButteraugliComparator) DiffmapOpsinDynamicsImage(xyb0_arg, xyb1 [][]float32) (result []float32) {
+	if bbc.xsize_ < 8 || bbc.ysize_ < 8 {
 		return
 	}
 	xyb0 := xyb0_arg
 	{
 		xyb1_c := xyb1
-		MaskHighIntensityChange(bbc.xsize_, bbc.ysize_, bbc.xyb0_arg, bbc.xyb1_c, xyb0, xyb1)
+		MaskHighIntensityChange(bbc.xsize_, bbc.ysize_, xyb0_arg, xyb1_c, xyb0, xyb1)
 	}
-	assert(8 <= xsize_)
+	assert(8 <= bbc.xsize_)
 	for i := 0; i < 3; i++ {
-		assert(len(xyb0[i]) == num_pixels_)
-		assert(len(xyb1[i]) == num_pixels_)
+		assert(len(xyb0[i]) == bbc.num_pixels_)
+		assert(len(xyb1[i]) == bbc.num_pixels_)
 	}
-	edge_detector_map := make([]float32, 3*res_xsize_*res_ysize_)
-	EdgeDetectorMap(xyb0, xyb1, edge_detector_map)
-	block_diff_dc := make([]float32, 3*res_xsize_*res_ysize_)
-	block_diff_ac := make([]float32, 3*res_xsize_*res_ysize_)
-	BlockDiffMap(xyb0, xyb1, block_diff_dc, block_diff_ac)
-	EdgeDetectorLowFreq(xyb0, xyb1, block_diff_ac)
+	edge_detector_map := make([]float32, 3*bbc.res_xsize_*bbc.res_ysize_)
+	bbc.EdgeDetectorMap(xyb0, xyb1, edge_detector_map)
+	block_diff_dc := make([]float32, 3*bbc.res_xsize_*bbc.res_ysize_)
+	block_diff_ac := make([]float32, 3*bbc.res_xsize_*bbc.res_ysize_)
+	bbc.BlockDiffMap(xyb0, xyb1, block_diff_dc, block_diff_ac)
+	bbc.EdgeDetectorLowFreq(xyb0, xyb1, block_diff_ac)
 	{
 		mask_xyb := make([][]float32, 3)
 		mask_xyb_dc := make([][]float32, 3)
-		Mask(xyb0, xyb1, xsize_, ysize_, mask_xyb, mask_xyb_dc)
-		CombineChannels(mask_xyb, mask_xyb_dc, block_diff_dc, block_diff_ac, edge_detector_map, result)
+		Mask(xyb0, xyb1, bbc.xsize_, bbc.ysize_, mask_xyb, mask_xyb_dc)
+		result = bbc.CombineChannels(mask_xyb, mask_xyb_dc, block_diff_dc, block_diff_ac, edge_detector_map)
 	}
-	CalculateDiffmap(xsize_, ysize_, step_, result)
+	CalculateDiffmap(bbc.xsize_, bbc.ysize_, bbc.step_, result)
+	return result
 }
 
 func (bbc *ButteraugliButteraugliComparator) BlockDiffMap(xyb0, xyb1 [][]float32, block_diff_dc, block_diff_ac []float32) {
 	// PROFILER_FUNC;
-	for res_y := 0; res_y+(kBlockEdge-step_-1) < ysize_; res_y += step_ {
-		for res_x := 0; res_x+(kBlockEdge-step_-1) < xsize_; res_x += step_ {
-			res_ix := (res_y*res_xsize_ + res_x) / step_
-			offset := (std_min(res_y, ysize_-8)*xsize_ + std_min(res_x, xsize_-8))
+	for res_y := 0; res_y+(kBlockEdge-bbc.step_-1) < bbc.ysize_; res_y += bbc.step_ {
+		for res_x := 0; res_x+(kBlockEdge-bbc.step_-1) < bbc.xsize_; res_x += bbc.step_ {
+			res_ix := (res_y*bbc.res_xsize_ + res_x) / bbc.step_
+			offset := (std_min(res_y, bbc.ysize_-8)*bbc.xsize_ + std_min(res_x, bbc.xsize_-8))
 			var block0, block1 [3 * kBlockEdge * kBlockEdge]float64
 			for i := 0; i < 3; i++ {
-				m0 = block0[i*kBlockEdge*kBlockEdge:]
-				m1 = block1[i*kBlockEdge*kBlockEdge:]
+				m0 := block0[i*kBlockEdge*kBlockEdge:]
+				m1 := block1[i*kBlockEdge*kBlockEdge:]
 				for y := 0; y < kBlockEdge; y++ {
 					for x := 0; x < kBlockEdge; x++ {
-						m0[kBlockEdge*y+x] = xyb0[i][offset+y*xsize_+x]
-						m1[kBlockEdge*y+x] = xyb1[i][offset+y*xsize_+x]
+						m0[kBlockEdge*y+x] = float64(xyb0[i][offset+y*bbc.xsize_+x])
+						m1[kBlockEdge*y+x] = float64(xyb1[i][offset+y*bbc.xsize_+x])
 					}
 				}
 			}
 			var diff_xyb_dc, diff_xyb_ac, diff_xyb_edge_dc [3]float64
-			ButteraugliBlockDiff(block0, block1, diff_xyb_dc[:], diff_xyb_ac[:], diff_xyb_edge_dc[:])
+			ButteraugliBlockDiff(block0[:], block1[:], diff_xyb_dc[:], diff_xyb_ac[:], diff_xyb_edge_dc[:])
 			for i := 0; i < 3; i++ {
-				(*block_diff_dc)[3*res_ix+i] = static_cast < float > (diff_xyb_dc[i])
-				(*block_diff_ac)[3*res_ix+i] = static_cast < float > (diff_xyb_ac[i])
+				block_diff_dc[3*res_ix+i] = float32(diff_xyb_dc[i])
+				block_diff_ac[3*res_ix+i] = float32(diff_xyb_ac[i])
 			}
 		}
 	}
@@ -1048,16 +1070,16 @@ func (bbc *ButteraugliButteraugliComparator) EdgeDetectorMap(xyb0, xyb1 [][]floa
 	blurred0 := cloneMatrixFloat32(xyb0) // TODO PATAPON is this intended to be a copy?
 	blurred1 := cloneMatrixFloat32(xyb1) // TODO PATAPON is this intended to be a copy?
 	for i := 0; i < 3; i++ {
-		Blur(xsize_, ysize_, blurred0[i], kSigma[i], 0.0)
-		Blur(xsize_, ysize_, blurred1[i], kSigma[i], 0.0)
+		Blur(bbc.xsize_, bbc.ysize_, blurred0[i], kSigma[i], 0.0)
+		Blur(bbc.xsize_, bbc.ysize_, blurred1[i], kSigma[i], 0.0)
 	}
-	for res_y := 0; res_y+(8-step_) < ysize_; res_y += step_ {
-		for res_x := 0; res_x+(8-step_) < xsize_; res_x += step_ {
-			res_ix := (res_y*res_xsize_ + res_x) / step_
+	for res_y := 0; res_y+(8-bbc.step_) < bbc.ysize_; res_y += bbc.step_ {
+		for res_x := 0; res_x+(8-bbc.step_) < bbc.xsize_; res_x += bbc.step_ {
+			res_ix := (res_y*bbc.res_xsize_ + res_x) / bbc.step_
 			var diff_xyb [3]float64
-			Butteraugli8x8CornerEdgeDetectorDiff(std_min(res_x, xsize_-8),
-				std_min(res_y, ysize_-8),
-				xsize_, ysize_,
+			Butteraugli8x8CornerEdgeDetectorDiff(std_min(res_x, bbc.xsize_-8),
+				std_min(res_y, bbc.ysize_-8),
+				bbc.xsize_, bbc.ysize_,
 				blurred0, blurred1,
 				diff_xyb[:])
 			for i := 0; i < 3; i++ {
@@ -1074,34 +1096,34 @@ func (bbc *ButteraugliButteraugliComparator) EdgeDetectorLowFreq(xyb0, xyb1 [][]
 	blurred0 := cloneMatrixFloat32(xyb0) // TODO PATAPON is this intended to be a copy?
 	blurred1 := cloneMatrixFloat32(xyb1) // TODO PATAPON is this intended to be a copy?
 	for i := 0; i < 3; i++ {
-		Blur(xsize_, ysize_, blurred0[i].data(), kSigma, 0.0)
-		Blur(xsize_, ysize_, blurred1[i].data(), kSigma, 0.0)
+		Blur(bbc.xsize_, bbc.ysize_, blurred0[i], kSigma, 0.0)
+		Blur(bbc.xsize_, bbc.ysize_, blurred1[i], kSigma, 0.0)
 	}
 	step := 8
-	for y := 0; y+step < ysize_; y += step_ {
-		resy := y / step_
-		resx := step / step_
-		for x := 0; x+step < xsize_; x, resx = x+step_, resx+1 {
-			ix := y*xsize_ + x
-			res_ix := resy*res_xsize_ + resx
+	for y := 0; y+step < bbc.ysize_; y += bbc.step_ {
+		resy := y / bbc.step_
+		resx := step / bbc.step_
+		for x := 0; x+step < bbc.xsize_; x, resx = x+bbc.step_, resx+1 {
+			ix := y*bbc.xsize_ + x
+			res_ix := resy*bbc.res_xsize_ + resx
 			var diff [4][3]float64
 			for i := 0; i < 3; i++ {
 				ix2 := ix + 8
 				diff[0][i] =
-					((blurred1[i][ix] - blurred0[i][ix]) +
+					float64((blurred1[i][ix] - blurred0[i][ix]) +
 						(blurred0[i][ix2] - blurred1[i][ix2]))
-				ix2 = ix + 8*xsize_
+				ix2 = ix + 8*bbc.xsize_
 				diff[1][i] =
-					((blurred1[i][ix] - blurred0[i][ix]) +
+					float64((blurred1[i][ix] - blurred0[i][ix]) +
 						(blurred0[i][ix2] - blurred1[i][ix2]))
-				ix2 = ix + 6*xsize_ + 6
+				ix2 = ix + 6*bbc.xsize_ + 6
 				diff[2][i] =
-					((blurred1[i][ix] - blurred0[i][ix]) +
+					float64((blurred1[i][ix] - blurred0[i][ix]) +
 						(blurred0[i][ix2] - blurred1[i][ix2]))
-				ix2 = ix + 6*xsize_ - 6
+				ix2 = ix + 6*bbc.xsize_ - 6
 				diff[3][i] = 0
 				if x >= step {
-					diff[3][i] = ((blurred1[i][ix] - blurred0[i][ix]) + (blurred0[i][ix2] - blurred1[i][ix2]))
+					diff[3][i] = float64((blurred1[i][ix] - blurred0[i][ix]) + (blurred0[i][ix2] - blurred1[i][ix2]))
 				}
 			}
 			var max_diff_xyb [3]float64
@@ -1115,7 +1137,7 @@ func (bbc *ButteraugliButteraugliComparator) EdgeDetectorLowFreq(xyb0, xyb1 [][]
 				}
 			}
 			for i := 0; i < 3; i++ {
-				(*block_diff_ac)[3*res_ix+i] += static_cast < float > (kMul * max_diff_xyb[i])
+				block_diff_ac[3*res_ix+i] += float32(kMul * max_diff_xyb[i])
 			}
 		}
 	}
@@ -1123,30 +1145,31 @@ func (bbc *ButteraugliButteraugliComparator) EdgeDetectorLowFreq(xyb0, xyb1 [][]
 
 func (bbc *ButteraugliButteraugliComparator) CombineChannels(
 	mask_xyb, mask_xyb_dc [][]float32,
-	block_diff_dc, block_diff_ac, edge_detector_map []float32,
-	result []float32) {
+	block_diff_dc, block_diff_ac, edge_detector_map []float32) (result []float32) {
 	// PROFILER_FUNC;
-	result = make([]X, res_xsize_*res_ysize_)
-	for res_y := 0; res_y+(8-step_) < ysize_; res_y += step_ {
-		for res_x := 0; res_x+(8-step_) < xsize_; res_x += step_ {
-			res_ix := (res_y*res_xsize_ + res_x) / step_
+	result = make([]float32, bbc.res_xsize_*bbc.res_ysize_)
+	for res_y := 0; res_y+(8-bbc.step_) < bbc.ysize_; res_y += bbc.step_ {
+		for res_x := 0; res_x+(8-bbc.step_) < bbc.xsize_; res_x += bbc.step_ {
+			res_ix := (res_y*bbc.res_xsize_ + res_x) / bbc.step_
 			var mask, dc_mask [3]float64
 			for i := 0; i < 3; i++ {
-				mask[i] = mask_xyb[i][(res_y+3)*xsize_+(res_x+3)]
-				dc_mask[i] = mask_xyb_dc[i][(res_y+3)*xsize_+(res_x+3)]
+				mask[i] = float64(mask_xyb[i][(res_y+3)*bbc.xsize_+(res_x+3)])
+				dc_mask[i] = float64(mask_xyb_dc[i][(res_y+3)*bbc.xsize_+(res_x+3)])
 			}
-			(*result)[res_ix] = static_cast < float > (DotProduct(&block_diff_dc[3*res_ix], dc_mask) +
-				DotProduct(&block_diff_ac[3*res_ix], mask) +
-				DotProduct(&edge_detector_map[3*res_ix], mask))
+			result[res_ix] = float32(
+				DotProduct_(block_diff_dc[3*res_ix:], dc_mask[:]) +
+					DotProduct_(block_diff_ac[3*res_ix:], mask[:]) +
+					DotProduct_(edge_detector_map[3*res_ix:], mask[:]))
 		}
 	}
+	return result
 }
 
 func ButteraugliScoreFromDiffmap(diffmap []float32) float64 {
 	// PROFILER_FUNC;
-	var retval float32
-	for ix := 0; ix < diffmap.size(); ix++ {
-		retval = std_max(retval, diffmap[ix])
+	var retval float64
+	for ix := 0; ix < len(diffmap); ix++ {
+		retval = std_maxFloat64(retval, float64(diffmap[ix]))
 	}
 	return retval
 }
@@ -1154,7 +1177,7 @@ func ButteraugliScoreFromDiffmap(diffmap []float32) float64 {
 func MakeMask(extmul, extoff, mul, offset, scaler float64) []float64 {
 	lut := make([]float64, 512)
 	for i := 0; i < len(lut); i++ {
-		c := mul / ((0.01 * scaler * i) + offset)
+		c := mul / ((0.01 * scaler * float64(i)) + offset)
 		lut[i] = 1.0 + extmul*(c+extoff)
 		assert(lut[i] >= 0.0)
 		lut[i] *= lut[i]
@@ -1170,7 +1193,7 @@ func MaskX(delta float64) float64 {
 	const scaler = 0.0738288224836
 	const mul = 20.8029176447
 	lut := MakeMask(extmul, extoff, mul, offset, scaler)
-	return InterpolateClampNegative(lut.data(), lut.size(), delta)
+	return InterpolateClampNegative(lut, len(lut), delta)
 }
 
 func MaskY(delta float64) float64 {
@@ -1181,7 +1204,7 @@ func MaskY(delta float64) float64 {
 	const scaler = 1.1731667845
 	const mul = 16.2447033988
 	lut := MakeMask(extmul, extoff, mul, offset, scaler)
-	return InterpolateClampNegative(lut.data(), lut.size(), delta)
+	return InterpolateClampNegative(lut, len(lut), delta)
 }
 
 func MaskB(delta float64) float64 {
@@ -1192,7 +1215,7 @@ func MaskB(delta float64) float64 {
 	const scaler = 0.47434643535
 	const mul = 31.1444967089
 	lut := MakeMask(extmul, extoff, mul, offset, scaler)
-	return InterpolateClampNegative(lut.data(), lut.size(), delta)
+	return InterpolateClampNegative(lut, len(lut), delta)
 }
 
 func MaskDcX(delta float64) float64 {
@@ -1203,7 +1226,7 @@ func MaskDcX(delta float64) float64 {
 	const scaler = 0.486575865525
 	const mul = 20.4563479139
 	lut := MakeMask(extmul, extoff, mul, offset, scaler)
-	return InterpolateClampNegative(lut.data(), lut.size(), delta)
+	return InterpolateClampNegative(lut, len(lut), delta)
 }
 
 func MaskDcY(delta float64) float64 {
@@ -1214,7 +1237,7 @@ func MaskDcY(delta float64) float64 {
 	const scaler = 0.170392660501
 	const mul = 21.6566724788
 	lut := MakeMask(extmul, extoff, mul, offset, scaler)
-	return InterpolateClampNegative(lut.data(), lut.size(), delta)
+	return InterpolateClampNegative(lut, len(lut), delta)
 }
 
 func MaskDcB(delta float64) float64 {
@@ -1225,7 +1248,7 @@ func MaskDcB(delta float64) float64 {
 	const scaler = 0.380086095024
 	const mul = 18.0373825149
 	lut := MakeMask(extmul, extoff, mul, offset, scaler)
-	return InterpolateClampNegative(lut.data(), lut.size(), delta)
+	return InterpolateClampNegative(lut, len(lut), delta)
 }
 
 // Replaces values[x + y * xsize] with the minimum of the values in the
@@ -1246,9 +1269,9 @@ func MinSquareVal(square_size, offset, xsize, ysize int, values []float32) {
 		for x := 0; x < xsize; x++ {
 			min := values[x+minh*xsize]
 			for j := minh + 1; j < maxh; j++ {
-				min = fmin(min, values[x+j*xsize])
+				min = std_minFloat32(min, values[x+j*xsize])
 			}
-			tmp[x+y*xsize] = static_cast < float > (min)
+			tmp[x+y*xsize] = float32(min)
 		}
 	}
 	for x := 0; x < xsize; x++ {
@@ -1260,9 +1283,9 @@ func MinSquareVal(square_size, offset, xsize, ysize int, values []float32) {
 		for y := 0; y < ysize; y++ {
 			min := tmp[minw+y*xsize]
 			for j := minw + 1; j < maxw; j++ {
-				min = fmin(min, tmp[j+y*xsize])
+				min = std_minFloat32(min, tmp[j+y*xsize])
 			}
-			values[x+y*xsize] = static_cast < float > (min)
+			values[x+y*xsize] = float32(min)
 		}
 	}
 }
@@ -1279,7 +1302,7 @@ func Average5x5(xsize, ysize int, diffs []float32) {
 	result := cloneSliceFloat32(diffs) // TODO PATAPON: is this intended as a copy?
 	tmp0 := cloneSliceFloat32(diffs)   // TODO PATAPON: is this intended as a copy?
 	tmp1 := cloneSliceFloat32(diffs)   // TODO PATAPON: is this intended as a copy?
-	ScaleImage(w, tmp1)
+	ScaleImage(float64(w), tmp1)
 	for y := 0; y < ysize; y++ {
 		row0 := y * xsize
 		result[row0+1] += tmp0[row0]
@@ -1317,17 +1340,16 @@ func Average5x5(xsize, ysize int, diffs []float32) {
 			result[rowu1+xsize-2] += tmp1[row0+xsize-1]
 		}
 	}
-	*diffs = result
-	ScaleImage(scale, diffs)
+	copy(diffs, result)
+	ScaleImage(float64(scale), diffs)
 }
 
 func DiffPrecompute(xyb0, xyb1 [][]float32, xsize, ysize int, mask [][]float32) {
 	//PROFILER_FUNC;
-	mask = [][]float32{
-		make([]float32, len(xyb0[0])),
-		make([]float32, len(xyb0[0])),
-		make([]float32, len(xyb0[0])),
-	}
+	assert(len(mask) == 3)
+	mask[0] = make([]float32, len(xyb0[0]))
+	mask[1] = make([]float32, len(xyb0[0]))
+	mask[2] = make([]float32, len(xyb0[0]))
 	var valsh0, valsv0, valsh1, valsv1 [3]float64
 	var ix2 int
 	for y := 0; y < ysize; y++ {
@@ -1339,13 +1361,13 @@ func DiffPrecompute(xyb0, xyb1 [][]float32, xsize, ysize int, mask [][]float32) 
 				ix2 = ix - 1
 			}
 			{
-				x0 := (xyb0[0][ix] - xyb0[0][ix2])
-				y0 := (xyb0[1][ix] - xyb0[1][ix2])
-				z0 := (xyb0[2][ix] - xyb0[2][ix2])
+				x0 := float64(xyb0[0][ix] - xyb0[0][ix2])
+				y0 := float64(xyb0[1][ix] - xyb0[1][ix2])
+				z0 := float64(xyb0[2][ix] - xyb0[2][ix2])
 				XybToVals(x0, y0, z0, &valsh0[0], &valsh0[1], &valsh0[2])
-				x1 := (xyb1[0][ix] - xyb1[0][ix2])
-				y1 := (xyb1[1][ix] - xyb1[1][ix2])
-				z1 := (xyb1[2][ix] - xyb1[2][ix2])
+				x1 := float64(xyb1[0][ix] - xyb1[0][ix2])
+				y1 := float64(xyb1[1][ix] - xyb1[1][ix2])
+				z1 := float64(xyb1[2][ix] - xyb1[2][ix2])
 				XybToVals(x1, y1, z1, &valsh1[0], &valsh1[1], &valsh1[2])
 			}
 			if y+1 < ysize {
@@ -1354,20 +1376,20 @@ func DiffPrecompute(xyb0, xyb1 [][]float32, xsize, ysize int, mask [][]float32) 
 				ix2 = ix - xsize
 			}
 			{
-				x0 := (xyb0[0][ix] - xyb0[0][ix2])
-				y0 := (xyb0[1][ix] - xyb0[1][ix2])
-				z0 := (xyb0[2][ix] - xyb0[2][ix2])
+				x0 := float64(xyb0[0][ix] - xyb0[0][ix2])
+				y0 := float64(xyb0[1][ix] - xyb0[1][ix2])
+				z0 := float64(xyb0[2][ix] - xyb0[2][ix2])
 				XybToVals(x0, y0, z0, &valsv0[0], &valsv0[1], &valsv0[2])
-				x1 := (xyb1[0][ix] - xyb1[0][ix2])
-				y1 := (xyb1[1][ix] - xyb1[1][ix2])
-				z1 := (xyb1[2][ix] - xyb1[2][ix2])
+				x1 := float64(xyb1[0][ix] - xyb1[0][ix2])
+				y1 := float64(xyb1[1][ix] - xyb1[1][ix2])
+				z1 := float64(xyb1[2][ix] - xyb1[2][ix2])
 				XybToVals(x1, y1, z1, &valsv1[0], &valsv1[1], &valsv1[2])
 			}
 			for i := 0; i < 3; i++ {
-				sup0 := fabs(valsh0[i]) + fabs(valsv0[i])
-				sup1 := fabs(valsh1[i]) + fabs(valsv1[i])
-				m := std_min(sup0, sup1)
-				(*mask)[i][ix] = static_cast < float > (m)
+				sup0 := math.Abs(valsh0[i]) + math.Abs(valsv0[i])
+				sup1 := math.Abs(valsh1[i]) + math.Abs(valsv1[i])
+				m := std_minFloat64(sup0, sup1)
+				mask[i][ix] = float32(m)
 			}
 		}
 	}
@@ -1375,49 +1397,52 @@ func DiffPrecompute(xyb0, xyb1 [][]float32, xsize, ysize int, mask [][]float32) 
 
 func Mask(xyb0, xyb1 [][]float32, xsize, ysize int, mask, mask_dc [][]float32) {
 	//PROFILER_FUNC;
+	assert(len(mask) == 3)    // TODO PATAPON: always?
+	assert(len(mask_dc) == 3) // TODO PATAPON: always?
+
 	mask = mask[:3]
 	for i := 0; i < 3; i++ {
 		mask[i] = mask[i][:xsize*ysize]
 	}
 	DiffPrecompute(xyb0, xyb1, xsize, ysize, mask)
 	for i := 0; i < 3; i++ {
-		Average5x5(xsize, ysize, &(*mask)[i])
-		MinSquareVal(4, 0, xsize, ysize, (*mask)[i].data())
+		Average5x5(xsize, ysize, mask[i])
+		MinSquareVal(4, 0, xsize, ysize, mask[i])
 		sigma := [3]float64{
 			9.65781083553,
 			14.2644604355,
 			4.53358927369,
 		}
-		Blur(xsize, ysize, (*mask)[i].data(), sigma[i], 0.0)
+		Blur(xsize, ysize, mask[i], sigma[i], 0.0)
 	}
 	const w00 = 232.206464018
 	const w11 = 22.9455222245
 	const w22 = 503.962310606
 
-	mask_dc.resize(3)
+	mask_dc = mask_dc[:3]
 	for i := 0; i < 3; i++ {
-		(*mask_dc)[i].resize(xsize * ysize)
+		mask_dc[i] = make([]float32, xsize*ysize)
 	}
 	for y := 0; y < ysize; y++ {
 		for x := 0; x < xsize; x++ {
 			idx := y*xsize + x
-			s0 := (*mask)[0][idx]
-			s1 := (*mask)[1][idx]
-			s2 := (*mask)[2][idx]
-			p0 := w00 * s0
-			p1 := w11 * s1
-			p2 := w22 * s2
+			s0 := mask[0][idx]
+			s1 := mask[1][idx]
+			s2 := mask[2][idx]
+			p0 := w00 * float64(s0)
+			p1 := w11 * float64(s1)
+			p2 := w22 * float64(s2)
 
-			(*mask)[0][idx] = static_cast < float > (MaskX(p0))
-			(*mask)[1][idx] = static_cast < float > (MaskY(p1))
-			(*mask)[2][idx] = static_cast < float > (MaskB(p2))
-			(*mask_dc)[0][idx] = static_cast < float > (MaskDcX(p0))
-			(*mask_dc)[1][idx] = static_cast < float > (MaskDcY(p1))
-			(*mask_dc)[2][idx] = static_cast < float > (MaskDcB(p2))
+			mask[0][idx] = float32(MaskX(p0))
+			mask[1][idx] = float32(MaskY(p1))
+			mask[2][idx] = float32(MaskB(p2))
+			mask_dc[0][idx] = float32(MaskDcX(p0))
+			mask_dc[1][idx] = float32(MaskDcY(p1))
+			mask_dc[2][idx] = float32(MaskDcB(p2))
 		}
 	}
 	for i := 0; i < 3; i++ {
-		ScaleImage(kGlobalScale*kGlobalScale, &(*mask)[i])
-		ScaleImage(kGlobalScale*kGlobalScale, &(*mask_dc)[i])
+		ScaleImage(kGlobalScale*kGlobalScale, mask[i])
+		ScaleImage(kGlobalScale*kGlobalScale, mask_dc[i])
 	}
 }

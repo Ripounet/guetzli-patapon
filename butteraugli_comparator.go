@@ -7,45 +7,45 @@ const kButteraugliStep = 3
 type ButteraugliComparator struct {
 	width_               int
 	height_              int
-	target_distance_     float64
+	target_distance_     float32
 	rgb_orig_            []byte
 	block_x_, block_y_   int
 	factor_x_, factor_y_ int
-	rgb_linear_pregamma_ [][]float64
-	mask_xyz_            [][]float64
-	per_block_pregamma_  [][][]float64
+	rgb_linear_pregamma_ [][]float32
+	mask_xyz_            [][]float32
+	per_block_pregamma_  [][][]float32
 	comparator_          *ButteraugliButteraugliComparator
-	distance_            float64
-	distmap_             []float64
+	distance_            float32
+	distmap_             []float32
 	stats_               *ProcessStats
 }
 
 func NewButteraugliComparator(width, height int,
 	rgb []byte,
-	target_distance float64,
+	target_distance float32,
 	stats *ProcessStats) *ButteraugliComparator {
 	bc := new(ButteraugliComparator)
 	bc.width_ = width
 	bc.height_ = height
 	bc.target_distance_ = target_distance
 	bc.rgb_orig_ = rgb
-	bc.rgb_linear_pregamma_ = [][]float64{
-		make([]float64, bc.width_*bc.height_),
-		make([]float64, bc.width_*bc.height_),
-		make([]float64, bc.width_*bc.height_),
+	bc.rgb_linear_pregamma_ = [][]float32{
+		make([]float32, bc.width_*bc.height_),
+		make([]float32, bc.width_*bc.height_),
+		make([]float32, bc.width_*bc.height_),
 	}
 	bc.comparator_ = NewButteraugliButteraugliComparator(bc.width_, bc.height_, kButteraugliStep)
 	bc.distance_ = 0.0
-	bc.distmap_ = make([]float64, bc.width_)
+	bc.distmap_ = make([]float32, bc.width_)
 	for i := range bc.distmap_ {
-		bc.distmap_[i] = float64(bc.height_)
+		bc.distmap_[i] = float32(bc.height_)
 	}
 	bc.stats_ = stats
 	lut := Srgb8ToLinearTable
 	for c := 0; c < 3; c++ {
 		for y, ix := 0, 0; y < bc.height_; y++ {
 			for x := 0; x < bc.width_; x, ix = x+1, ix+1 {
-				bc.rgb_linear_pregamma_[c][ix] = lut[bc.rgb_orig_[3*ix+c]]
+				bc.rgb_linear_pregamma_[c][ix] = float32(lut[bc.rgb_orig_[3*ix+c]])
 			}
 		}
 	}
@@ -54,15 +54,15 @@ func NewButteraugliComparator(width, height int,
 }
 
 func (bc *ButteraugliComparator) Compare(img OutputImage) {
-	rgb := [][]float64{
-		make([]float64, bc.width_*bc.height_),
-		make([]float64, bc.width_*bc.height_),
-		make([]float64, bc.width_*bc.height_),
+	rgb := [][]float32{
+		make([]float32, bc.width_*bc.height_),
+		make([]float32, bc.width_*bc.height_),
+		make([]float32, bc.width_*bc.height_),
 	}
 	img.ToLinearRGB(rgb)
 	OpsinDynamicsImage(bc.width_, bc.height_, rgb)
-	bc.comparator_.DiffmapOpsinDynamicsImage(bc.rgb_linear_pregamma_, rgb, bc.distmap_)
-	bc.distance_ = ButteraugliScoreFromDiffmap(bc.distmap_)
+	bc.distmap_ = bc.comparator_.DiffmapOpsinDynamicsImage(bc.rgb_linear_pregamma_, rgb)
+	bc.distance_ = float32(ButteraugliScoreFromDiffmap(bc.distmap_))
 	// GUETZLI_LOG(stats_, " BA[100.00%%] D[%6.4f]", distance_);
 }
 
@@ -81,14 +81,14 @@ func (bc *ButteraugliComparator) SwitchBlock(block_x, block_y, factor_x, factor_
 	bc.block_y_ = block_y
 	bc.factor_x_ = factor_x
 	bc.factor_y_ = factor_y
-	bc.per_block_pregamma_ = make([][][]float64, bc.factor_x_*bc.factor_y_)
+	bc.per_block_pregamma_ = make([][][]float32, bc.factor_x_*bc.factor_y_)
 	lut := Srgb8ToLinearTable
 	for off_y, bx := 0, 0; off_y < bc.factor_y_; off_y++ {
 		for off_x := 0; off_x < bc.factor_x_; off_x, bx = off_x+1, bx+1 {
-			bc.per_block_pregamma_[bx] = [][]float64{
-				make([]float64, kDCTBlockSize),
-				make([]float64, kDCTBlockSize),
-				make([]float64, kDCTBlockSize),
+			bc.per_block_pregamma_[bx] = [][]float32{
+				make([]float32, kDCTBlockSize),
+				make([]float32, kDCTBlockSize),
+				make([]float32, kDCTBlockSize),
 			}
 			block_xx := bc.block_x_*bc.factor_x_ + off_x
 			block_yy := bc.block_y_*bc.factor_y_ + off_y
@@ -98,7 +98,7 @@ func (bc *ButteraugliComparator) SwitchBlock(block_x, block_y, factor_x, factor_
 					y := std_min(8*block_yy+iy, bc.height_-1)
 					px := y*bc.width_ + x
 					for c := 0; c < 3; c++ {
-						bc.per_block_pregamma_[bx][c][i] = lut[bc.rgb_orig_[3*px+c]]
+						bc.per_block_pregamma_[bx][c][i] = float32(lut[bc.rgb_orig_[3*px+c]])
 					}
 				}
 			}
@@ -115,28 +115,28 @@ func (bc *ButteraugliComparator) CompareBlock(img *OutputImage, off_x, off_y int
 	block_ix := off_y*bc.factor_x_ + off_x
 	rgb0_c := bc.per_block_pregamma_[block_ix]
 
-	rgb1_c := make([][]float64, kDCTBlockSize)
+	rgb1_c := make([][]float32, kDCTBlockSize)
 	img.ToLinearRGB_(xmin, ymin, 8, 8, rgb1_c)
 	OpsinDynamicsImage(8, 8, rgb1_c)
 
-	rgb0 := cloneMatrixFloat64(rgb0_c)
-	rgb1 := cloneMatrixFloat64(rgb1_c)
+	rgb0 := cloneMatrixFloat32(rgb0_c)
+	rgb1 := cloneMatrixFloat32(rgb1_c)
 
 	MaskHighIntensityChange(8, 8, rgb0_c, rgb1_c, rgb0, rgb1)
 
 	var b0, b1 [3 * kDCTBlockSize]float64
 	for c := 0; c < 3; c++ {
 		for ix := 0; ix < kDCTBlockSize; ix++ {
-			b0[c*kDCTBlockSize+ix] = rgb0[c][ix]
-			b1[c*kDCTBlockSize+ix] = rgb1[c][ix]
+			b0[c*kDCTBlockSize+ix] = float64(rgb0[c][ix])
+			b1[c*kDCTBlockSize+ix] = float64(rgb1[c][ix])
 		}
 	}
 	var diff_xyz_dc, diff_xyz_ac, diff_xyz_edge_dc [3]float64
-	ButteraugliBlockDiff(b0, b1, diff_xyz_dc, diff_xyz_ac, diff_xyz_edge_dc)
+	ButteraugliBlockDiff(b0[:], b1[:], diff_xyz_dc[:], diff_xyz_ac[:], diff_xyz_edge_dc[:])
 
 	var scale [3]float64
 	for c := 0; c < 3; c++ {
-		scale[c] = bc.mask_xyz_[c][ymin*bc.width_+xmin]
+		scale[c] = float64(bc.mask_xyz_[c][ymin*bc.width_+xmin])
 	}
 
 	const kEdgeWeight = 0.05
@@ -151,7 +151,7 @@ func (bc *ButteraugliComparator) CompareBlock(img *OutputImage, off_x, off_y int
 	return math.Sqrt((1-kEdgeWeight)*diff + kEdgeWeight*diff_edge)
 }
 
-func (bc *ButteraugliComparator) BlockErrorLimit() float64 {
+func (bc *ButteraugliComparator) BlockErrorLimit() float32 {
 	return bc.target_distance_
 }
 
@@ -162,7 +162,7 @@ func (bc *ButteraugliComparator) ComputeBlockErrorAdjustmentWeights(
 	factor_x, factor_y int,
 	distmap []float64,
 	block_weight []float64) {
-	target_distance := bc.target_distance_ * target_mul
+	target_distance := float64(bc.target_distance_) * target_mul
 	sizex := 8 * factor_x
 	sizey := 8 * factor_y
 	block_width := (bc.width_ + sizex - 1) / sizex
@@ -217,5 +217,5 @@ func (bc *ButteraugliComparator) ComputeBlockErrorAdjustmentWeights(
 }
 
 func (bc *ButteraugliComparator) ScoreOutputSize(size int) float64 {
-	return ScoreJPEG(bc.distance_, size, bc.target_distance_)
+	return ScoreJPEG(float64(bc.distance_), size, float64(bc.target_distance_))
 }

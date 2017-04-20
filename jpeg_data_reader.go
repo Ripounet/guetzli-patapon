@@ -16,7 +16,7 @@ func VERIFY_LEN(pos *int, n, length int) bool {
 			int(*pos), int(n),
 			int(length))
 		// jpg.err = JPEG_UNEXPECTED_EOF
-		panic(*pos + n) // TODO not panic?
+		panic(*pos + n) // TODO PATAPON not panic?
 		return false
 	}
 	return true
@@ -26,7 +26,7 @@ func VERIFY_INPUT(var_, low, high int, code string) bool {
 	if var_ < low || var_ > high {
 		fprintf(stderr, "Invalid %s: %d\n", var_, int(var_))
 		// jpg.err = JPEG_INVALID_ //## code;
-		panic(var_) // TODO not panic?
+		panic(code) // TODO PATAPON not panic?
 		return false
 	}
 	return true
@@ -38,7 +38,7 @@ func VERIFY_MARKER_END(pos *int, start_pos, marker_len int) bool {
 			int(marker_len),
 			int(*pos-start_pos))
 		// jpg.err = JPEG_WRONG_MARKER_SIZE
-		panic(start_pos + marker_len) // TODO not panic?
+		panic("JPEG_WRONG_MARKER_SIZE") // TODO PATAPON not panic?
 		return false
 	}
 	return true

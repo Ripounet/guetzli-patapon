@@ -246,7 +246,7 @@ func InitJPEGDataForYUV444(w, h int, jpg *JPEGData) {
 	}
 }
 
-func SaveQuantTables(q [3][kDCTBlockSize]int, jpg *JPEGData) {
+func SaveQuantTables(q [][kDCTBlockSize]int, jpg *JPEGData) {
 	jpg.quant = nil
 	num_tables := 0
 	for i := 0; i < len(jpg.components); i++ {

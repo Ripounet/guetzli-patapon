@@ -3,6 +3,7 @@ package guetzli_patapon
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 )
 
@@ -49,6 +50,20 @@ func std_maxFloat64(a, b float64) float64 {
 	return a
 }
 
+func std_minFloat32(a, b float32) float32 {
+	if b < a {
+		return b
+	}
+	return a
+}
+
+func std_maxFloa32(a, b float32) float32 {
+	if b > a {
+		return b
+	}
+	return a
+}
+
 func std_abs(a int) int {
 	if a < 0 {
 		return -a
@@ -85,6 +100,17 @@ func cloneSliceFloat32(src []float32) (dst []float32) {
 	dst = make([]float32, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func sqrt32(x float32) float32 {
+	return float32(math.Sqrt(float64(x)))
+}
+
+func one(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func fprintf(w io.Writer, format string, a ...interface{}) {
