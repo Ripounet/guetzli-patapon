@@ -59,7 +59,7 @@ func (bc *ButteraugliComparator) Compare(img OutputImage) {
 		make([]float32, bc.width_*bc.height_),
 		make([]float32, bc.width_*bc.height_),
 	}
-	img.ToLinearRGB(rgb)
+	img.ToLinearRGB_(rgb)
 	OpsinDynamicsImage(bc.width_, bc.height_, rgb)
 	bc.distmap_ = bc.comparator_.DiffmapOpsinDynamicsImage(bc.rgb_linear_pregamma_, rgb)
 	bc.distance_ = float32(ButteraugliScoreFromDiffmap(bc.distmap_))
@@ -116,7 +116,7 @@ func (bc *ButteraugliComparator) CompareBlock(img *OutputImage, off_x, off_y int
 	rgb0_c := bc.per_block_pregamma_[block_ix]
 
 	rgb1_c := make([][]float32, kDCTBlockSize)
-	img.ToLinearRGB_(xmin, ymin, 8, 8, rgb1_c)
+	img.ToLinearRGB(xmin, ymin, 8, 8, rgb1_c)
 	OpsinDynamicsImage(8, 8, rgb1_c)
 
 	rgb0 := cloneMatrixFloat32(rgb0_c)

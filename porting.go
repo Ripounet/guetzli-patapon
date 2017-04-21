@@ -85,6 +85,11 @@ func std_abs(a int) int {
 	return a
 }
 
+func std_round(a float64) int {
+	// TODO PATAPON what about negative numbers?
+	return int(a + 0.5)
+}
+
 func minusOr0(a, b int) int {
 	if a < b {
 		return 0
@@ -116,6 +121,12 @@ func cloneSliceFloat32(src []float32) (dst []float32) {
 	return dst
 }
 
+func cloneSliceBool(src []bool) (dst []bool) {
+	dst = make([]bool, len(src))
+	copy(dst, src)
+	return dst
+}
+
 func sqrt32(x float32) float32 {
 	return float32(math.Sqrt(float64(x)))
 }
@@ -132,3 +143,15 @@ func fprintf(w io.Writer, format string, a ...interface{}) {
 }
 
 var stderr = os.Stderr
+
+//
+// TODO
+// TODO
+// TODO
+//
+
+var (
+	ComputeBlockIDCT  func(block []coeff_t, out []byte)
+	RGBToYUV420       func(rgb_in []byte, width, height int) [][]float32
+	PreProcessChannel func(w, h, channel int, sigma, amount float32, blur, sharpen bool, image [][]float32) [][]float32
+)
