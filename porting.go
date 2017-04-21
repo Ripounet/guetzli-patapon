@@ -151,7 +151,5 @@ var stderr = os.Stderr
 //
 
 var (
-	ComputeBlockIDCT  func(block []coeff_t, out []byte)
-	RGBToYUV420       func(rgb_in []byte, width, height int) [][]float32
-	PreProcessChannel func(w, h, channel int, sigma, amount float32, blur, sharpen bool, image [][]float32) [][]float32
+	ComputeBlockIDCT func(block []coeff_t, out []byte)
 )

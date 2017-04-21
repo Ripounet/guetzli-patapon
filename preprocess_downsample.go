@@ -69,7 +69,7 @@ func Sharpen(image []float32, w, h int, sigma, amount float64) []float32 {
 	// This is only made for small sigma, e.g. 1.3.
 	kernel := make([]float64, 5)
 	for i := 0; i < len(kernel); i++ {
-		kernel[i] = Normal(1.0*i-len(kernel)/2, sigma)
+		kernel[i] = Normal(float64(i-len(kernel)/2), sigma)
 	}
 
 	sum := 0.0
@@ -78,9 +78,9 @@ func Sharpen(image []float32, w, h int, sigma, amount float64) []float32 {
 	}
 	mul := 1.0 / sum
 
-	result := Convolve2X(image, w, h, kernel.data(), len(kernel), mul)
+	result := Convolve2X(image, w, h, kernel, len(kernel), mul)
 	for i := 0; i < len(image); i++ {
-		result[i] = image[i] + (image[i]-result[i])*amount
+		result[i] = image[i] + (image[i]-result[i])*float32(amount)
 	}
 	return result
 }
@@ -91,7 +91,7 @@ func Erode(w, h int, image []bool) {
 		for x := 1; x+1 < w; x++ {
 			index := y*w + x
 			if !(temp[index] && temp[index-1] && temp[index+1] && temp[index-w] && temp[index+w]) {
-				image[index] = 0
+				image[index] = false
 			}
 		}
 	}
@@ -103,18 +103,18 @@ func Dilate(w, h int, image []bool) {
 		for x := 1; x+1 < w; x++ {
 			index := y*w + x
 			if temp[index] || temp[index-1] || temp[index+1] || temp[index-w] || temp[index+w] {
-				image[index] = 1
+				image[index] = true
 			}
 		}
 	}
 }
 
-func Blur(image []float32, w, h int) []float32 {
+func Blur_(image []float32, w, h int) []float32 {
 	// This is only made for small sigma, e.g. 1.3.
 	const kSigma = 1.3
 	kernel := make([]float64, 5)
 	for i := 0; i < len(kernel); i++ {
-		kernel[i] = Normal(1.0*i-len(kernel)/2, kSigma)
+		kernel[i] = Normal(float64(i-len(kernel)/2), kSigma)
 	}
 
 	sum := 0.0
@@ -123,7 +123,7 @@ func Blur(image []float32, w, h int) []float32 {
 	}
 	mul := 1.0 / sum
 
-	return Convolve2X(image, w, h, kernel.data(), len(kernel), mul)
+	return Convolve2X(image, w, h, kernel, len(kernel), mul)
 }
 
 // Do the sharpening to the v channel, but only in areas where it will help
@@ -134,15 +134,15 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 	}
 
 	// Bring in range 0.0-1.0 for Y, -0.5 - 0.5 for U and V
-	yuv := cloneSliceFloat32(image) // TODO PATAPON: is this intended to be a copy?
-	for i := 0; i < yuv[0].size(); i++ {
+	yuv := cloneMatrixFloat32(image) // TODO PATAPON: is this intended to be a copy?
+	for i := 0; i < len(yuv[0]); i++ {
 		yuv[0][i] /= 255.0
 		yuv[1][i] = yuv[1][i]/255.0 - 0.5
 		yuv[2][i] = yuv[2][i]/255.0 - 0.5
 	}
 
 	// Map of areas where the image is not too bright to apply the effect.
-	darkmap := make([]bool, image[0].size(), false)
+	darkmap := make([]bool, len(image[0]))
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			index := y*w + x
@@ -165,12 +165,12 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 		}
 	}
 
-	Erode(w, h, &darkmap)
-	Erode(w, h, &darkmap)
-	Erode(w, h, &darkmap)
+	Erode(w, h, darkmap)
+	Erode(w, h, darkmap)
+	Erode(w, h, darkmap)
 
 	// Map of areas where the image is red enough (blue in case of u channel).
-	redmap := make([]bool, image[0].size())
+	redmap := make([]bool, len(image[0]))
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			index := y*w + x
@@ -187,12 +187,12 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 		}
 	}
 
-	Dilate(w, h, &redmap)
-	Dilate(w, h, &redmap)
-	Dilate(w, h, &redmap)
+	Dilate(w, h, redmap)
+	Dilate(w, h, redmap)
+	Dilate(w, h, redmap)
 
 	// Map of areas where to allow sharpening by combining red and dark areas
-	sharpenmap := make([]bool, image[0].size())
+	sharpenmap := make([]bool, len(image[0]))
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			index := y*w + x
@@ -201,7 +201,7 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 	}
 
 	// Threshold for where considered an edge.
-	threshold = 127.5
+	threshold := 127.5
 	if channel == 2 {
 		threshold *= 0.02
 	}
@@ -214,7 +214,7 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 
 	// Map of areas where to allow blurring, only where it is not too sharp
 	blurmap := make([]bool, len(image[0]))
-	edge := Convolve2D(yuv[channel], w, h, kEdgeMatrix, 3)
+	edge := Convolve2D(yuv[channel], w, h, kEdgeMatrix[:], 3)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			index := y*w + x
@@ -226,17 +226,17 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 			if !darkmap[index] {
 				continue
 			}
-			if fabs(edge[index]) < threshold && v < -0.162*u {
+			if math.Abs(float64(edge[index])) < threshold && v < -0.162*u {
 				blurmap[index] = true
 			}
 		}
 	}
-	Erode(w, h, &blurmap)
-	Erode(w, h, &blurmap)
+	Erode(w, h, blurmap)
+	Erode(w, h, blurmap)
 
 	// Choose sharpened, blurred or original per pixel
-	sharpened := Sharpen(yuv[channel], w, h, sigma, amount)
-	blurred := Blur(yuv[channel], w, h)
+	sharpened := Sharpen(yuv[channel], w, h, float64(sigma), float64(amount))
+	blurred := Blur_(yuv[channel], w, h)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			index := y*w + x
@@ -254,7 +254,7 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 	}
 
 	// Bring back to range 0-255
-	for i := 0; i < yuv[0].size(); i++ {
+	for i := 0; i < len(yuv[0]); i++ {
 		yuv[0][i] *= 255.0
 		yuv[1][i] = (yuv[1][i] + 0.5) * 255.0
 		yuv[2][i] = (yuv[2][i] + 0.5) * 255.0
@@ -262,8 +262,8 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 	return yuv
 }
 
-func Clip(float val) float32 {
-	return std_max(0.0, std_min(255.0, val))
+func Clip(val float32) float32 {
+	return std_maxFloa32(0.0, std_minFloat32(255.0, val))
 }
 
 func RGBToY(r, g, b float32) float32 {
@@ -291,13 +291,13 @@ func YUVToB(y, u, v float32) float32 {
 }
 
 // TODO(user) Use SRGB->linear conversion and a lookup-table.
-func GammaToLinear(float x) {
-	return float32(math.Pow(x/255.0, 2.2))
+func GammaToLinear(x float32) float32 {
+	return float32(math.Pow(float64(x/255.0), 2.2))
 }
 
 // TODO(user) Use linear->SRGB conversion and a lookup-table.
-func LinearToGamma(float x) {
-	return 255.0 * math.Pow(x, 1.0/2.2)
+func LinearToGamma(x float32) float32 {
+	return float32(255.0 * math.Pow(float64(x), 1.0/2.2))
 }
 
 func LinearlyAveragedLuma(rgb []float32) []float32 {
@@ -351,7 +351,7 @@ func RGBToYUV(rgb []float32) [][]float32 {
 }
 
 func YUVToRGB(yuv [][]float32) []float32 {
-	rgb := make([]float32, 3*yuv[0].size())
+	rgb := make([]float32, 3*len(yuv[0]))
 	for i, p := 0, 0; p < len(rgb); i, p = i+1, p+3 {
 		y := yuv[0][i]
 		u := yuv[1][i]
@@ -385,7 +385,7 @@ func Upsample2x2(img_in []float32, width, height int) []float32 {
 }
 
 // Apply the "fancy upsample" filter used by libjpeg.
-func Blur(img []float32, width, height int) []float32 {
+func Blur__(img []float32, width, height int) []float32 {
 	img_out := make([]float32, width*height)
 	for y0 := 0; y0 < height; y0 += 2 {
 		for x0 := 0; x0 < width; x0 += 2 {
@@ -412,19 +412,19 @@ func YUV420ToRGB(yuv420 [][]float32, width, height int) []float32 {
 	yuv = append(yuv, yuv420[0])
 	u := Upsample2x2(yuv420[1], width, height)
 	v := Upsample2x2(yuv420[2], width, height)
-	yuv.push_back(Blur(u, width, height))
-	yuv.push_back(Blur(v, width, height))
+	yuv = append(yuv, Blur__(u, width, height))
+	yuv = append(yuv, Blur__(v, width, height))
 	return YUVToRGB(yuv)
 }
 
 func UpdateGuess(target []float32,
 	reconstructed []float32,
-	guess [][]float32) {
+	guess []float32) {
 	assert(len(reconstructed) == len(guess))
 	assert(len(target) == len(guess))
 	for i := 0; i < len(guess); i++ {
 		// TODO(user): Evaluate using a decaying constant here.
-		guess[i] = Clip((*guess)[i] - (reconstructed[i] - target[i]))
+		guess[i] = Clip(guess[i] - (reconstructed[i] - target[i]))
 	}
 }
 
@@ -435,16 +435,16 @@ func RGBToYUV420(rgb_in []byte, width, height int) [][]float32 {
 	}
 	y_target := LinearlyAveragedLuma(rgbf)
 	yuv_target := RGBToYUV(LinearlyDownsample2x2(rgbf, width, height))
-	yuv_guess = cloneMatrixFloat32(yuv_target) // TODO PATAPON is this intended to be a copy?
+	yuv_guess := cloneMatrixFloat32(yuv_target) // TODO PATAPON is this intended to be a copy?
 	yuv_guess[0] = Upsample2x2(yuv_guess[0], width, height)
 	// TODO(user): Stop early if the error is small enough.
 	for iter := 0; iter < 20; iter++ {
 		rgb_rec := YUV420ToRGB(yuv_guess, width, height)
 		y_rec := LinearlyAveragedLuma(rgb_rec)
 		yuv_rec := RGBToYUV(LinearlyDownsample2x2(rgb_rec, width, height))
-		UpdateGuess(y_target, y_rec, &yuv_guess[0])
-		UpdateGuess(yuv_target[1], yuv_rec[1], &yuv_guess[1])
-		UpdateGuess(yuv_target[2], yuv_rec[2], &yuv_guess[2])
+		UpdateGuess(y_target, y_rec, yuv_guess[0])
+		UpdateGuess(yuv_target[1], yuv_rec[1], yuv_guess[1])
+		UpdateGuess(yuv_target[2], yuv_rec[2], yuv_guess[2])
 	}
 	yuv_guess[1] = Upsample2x2(yuv_guess[1], width, height)
 	yuv_guess[2] = Upsample2x2(yuv_guess[2], width, height)
