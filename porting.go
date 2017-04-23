@@ -160,4 +160,6 @@ var stderr = os.Stderr
 
 var (
 	GUETZLI_LOG      = func(x ...interface{}) {}
+	Log2FloorNonZero func(uint32) int
+	Log2Floor func(uint32) int
 )
