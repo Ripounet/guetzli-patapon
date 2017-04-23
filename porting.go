@@ -152,4 +152,5 @@ var stderr = os.Stderr
 
 var (
 	ComputeBlockIDCT func(block []coeff_t, out []byte)
+	GUETZLI_LOG      = func(x ...interface{}) {}
 )

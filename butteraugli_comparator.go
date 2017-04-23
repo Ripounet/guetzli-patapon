@@ -63,7 +63,7 @@ func (bc *ButteraugliComparator) Compare(img OutputImage) {
 	OpsinDynamicsImage(bc.width_, bc.height_, rgb)
 	bc.distmap_ = bc.comparator_.DiffmapOpsinDynamicsImage(bc.rgb_linear_pregamma_, rgb)
 	bc.distance_ = float32(ButteraugliScoreFromDiffmap(bc.distmap_))
-	// GUETZLI_LOG(stats_, " BA[100.00%%] D[%6.4f]", distance_);
+	GUETZLI_LOG(stats_, " BA[100.00%%] D[%6.4f]", distance_)
 }
 
 func (bc *ButteraugliComparator) StartBlockComparisons() {
