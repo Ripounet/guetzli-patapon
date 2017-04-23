@@ -138,6 +138,14 @@ func one(b bool) int {
 	return 0
 }
 
+// tern mimicks ternary operator (b?x:y), only for int type.
+func tern(b bool, x,y int) int {
+	if b {
+		return x
+	}
+	return y
+}
+
 func fprintf(w io.Writer, format string, a ...interface{}) {
 	_, _ = fmt.Fprintf(w, format, a...)
 }
@@ -153,4 +161,9 @@ var stderr = os.Stderr
 var (
 	ComputeBlockIDCT func(block []coeff_t, out []byte)
 	GUETZLI_LOG      = func(x ...interface{}) {}
+	NewBitWriter func() *BitWriter
+)
+
+type(
+	BitWriter struct{}
 )

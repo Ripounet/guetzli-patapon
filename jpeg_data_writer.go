@@ -2,7 +2,7 @@ package guetzli_patapon
 
 // Function pointer type used to write len bytes into buf. Returns the
 // number of bytes written or -1 on error.
-type JPEGOutputHook func(data interface{}, byf []byte) int
+type JPEGOutputHook func(data interface{}, buf []byte) int
 
 // Output callback function with associated data.
 type JPEGOutput struct {
@@ -42,7 +42,7 @@ func (h *JpegHistogram) Add(symbol int) {
 	h.counts[symbol] += 2
 }
 
-func (h *JpegHistogram) AddW(symbol int, weight int) {
+func  (h *JpegHistogram) AddW(symbol int, weight int) {
 	h.counts[symbol] += 2 * weight
 }
 
@@ -69,7 +69,7 @@ func (h *JpegHistogram) NumSymbols() int {
 const kJpegPrecision = 8;
 
 // Writes len bytes from buf, using the out callback.
-func JPEGWrite(JPEGOutput out, buf []byte) bool {
+func JPEGWrite(out JPEGOutput, buf []byte) bool {
   const kBlockSize uint32 = 1 << 30;
   pos := 0;
   for (len(buf) - pos > kBlockSize) {
@@ -163,7 +163,7 @@ func EncodeSOF(jpg *JPEGData, out JPEGOutput) bool {
 }
 
 // Builds a JPEG-style huffman code from the given bit depths.
-func BuildHuffmanCode(uint8_t* depth, int* counts, int* values) {
+func BuildHuffmanCode(depth []byte, counts, values []int) {
   for i := 0; i < JpegHistogram_kSize; i++ {
     if (depth[i] > 0) {
       counts[depth[i]]++
@@ -245,9 +245,9 @@ func UpdateACHistogramForDCTBlock(coeffs []coeff_t, ac_histogram *JpegHistogram)
   }
 }
 
-size_t HistogramHeaderCost(const JpegHistogram& histo) {
+func HistogramHeaderCost(histo *JpegHistogram) int {
   header_bits := 17 * 8;
-  for i := 0; i + 1 < JpegHistogram::kSize; i++ {
+  for i := 0; i + 1 < JpegHistogram_kSize; i++ {
     if (histo.counts[i] > 0) {
       header_bits += 8;
     }
@@ -255,10 +255,9 @@ size_t HistogramHeaderCost(const JpegHistogram& histo) {
   return header_bits;
 }
 
-size_t HistogramEntropyCost(const JpegHistogram& histo,
-                            const uint8_t depths[256]) {
+func HistogramEntropyCost(histo *JpegHistogram, depths []byte) int {
   bits := 0;
-  for i := 0; i + 1 < JpegHistogram::kSize; i++ {
+  for i := 0; i + 1 < JpegHistogram_kSize; i++ {
     // JpegHistogram::Add() counts every symbol twice, so we have to divide by
     // two here.
     bits += (histo.counts[i] / 2) * (depths[i] + (i & 0xf));
@@ -269,11 +268,11 @@ size_t HistogramEntropyCost(const JpegHistogram& histo,
 }
 
 func BuildDCHistograms(jpg *JPEGData) (histo []JpegHistogram) {
-  histo = make([]JpegHistogram, len(jpg.components)
+  histo = make([]JpegHistogram, len(jpg.components))
   for i := 0; i < jpg.components.size(); i++ {
     c := &jpg.components[i];
     JpegHistogram* dc_histogram = &histo[i];
-    coeff_t last_dc_coeff = 0;
+    last_dc_coeff := 0
     for mcu_y := 0; mcu_y < jpg.MCU_rows; mcu_y++ {
       for mcu_x := 0; mcu_x < jpg.MCU_cols; mcu_x++ {
         for iy := 0; iy < c.v_samp_factor; iy++ {
@@ -281,8 +280,8 @@ func BuildDCHistograms(jpg *JPEGData) (histo []JpegHistogram) {
             block_y := mcu_y * c.v_samp_factor + iy;
             block_x := mcu_x * c.h_samp_factor + ix;
             block_idx := block_y * c.width_in_blocks + block_x;
-            coeff_t dc_coeff = c.coeffs[block_idx << 6];
-            diff := std::abs(dc_coeff - last_dc_coeff);
+            dc_coeff := c.coeffs[block_idx << 6];
+            diff := std_abs(dc_coeff - last_dc_coeff);
             nbits := Log2Floor(diff) + 1;
             dc_histogram.Add(nbits);
             last_dc_coeff = dc_coeff;
@@ -293,81 +292,83 @@ func BuildDCHistograms(jpg *JPEGData) (histo []JpegHistogram) {
   }
 }
 
-func BuildACHistograms(jpg *JPEGData, JpegHistogram* histo) {
+func BuildACHistograms(jpg *JPEGData, histo *JpegHistogram) {
   for i := 0; i < jpg.components.size(); i++ {
-    const JPEGComponent& c = jpg.components[i];
+    c = &jpg.components[i];
     JpegHistogram* ac_histogram = &histo[i];
-    for j := 0; j < c.coeffs.size(); j += kDCTBlockSize) {
+    for j := 0; j < len(c.coeffs); j += kDCTBlockSize {
       UpdateACHistogramForDCTBlock(&c.coeffs[j], ac_histogram);
     }
   }
 }
 
 // Size of everything except the Huffman codes and the entropy coded data.
-size_t JpegHeaderSize(jpg *JPEGData, bool strip_metadata) {
+func JpegHeaderSize(jpg *JPEGData, strip_metadata bool) int {
   num_bytes := 0;
   num_bytes += 2;  // SOI
   if (strip_metadata) {
     num_bytes += 18;  // APP0
   } else {
     for i := 0; i < jpg.app_data.size(); i++ {
-      num_bytes += 1 + jpg.app_data[i].size();
+      num_bytes += 1 + len(jpg.app_data[i]);
     }
     for i := 0; i < jpg.com_data.size(); i++ {
-      num_bytes += 2 + jpg.com_data[i].size();
+      num_bytes += 2 + len(jpg.com_data[i]);
     }
   }
   // DQT
   num_bytes += 4;
   for i := 0; i < len(jpg.quant); i++ {
-    num_bytes += 1 + (jpg.quant[i].precision ? 2 : 1) * kDCTBlockSize;
+    num_bytes += 1 + kDCTBlockSize;
+    if jpg.quant[i].precision {
+      num_bytes += kDCTBlockSize
+    }
   }
-  num_bytes += 10 + 3 * jpg.components.size();  // SOF
+  num_bytes += 10 + 3 * len(jpg.components);  // SOF
   num_bytes += 4;  // DHT (w/o actual Huffman code data)
-  num_bytes += 8 + 2 * jpg.components.size();  // SOS
+  num_bytes += 8 + 2 * len(jpg.components);  // SOS
   num_bytes += 2;  // EOI
   num_bytes += jpg.tail_data.size();
   return num_bytes;
 }
 
-size_t ClusterHistograms(JpegHistogram* histo, size_t* num,
-                         int* histo_indexes, uint8_t* depth) {
-  memset(depth, 0, *num * JpegHistogram::kSize);
-  size_t costs[kMaxComponents];
+func ClusterHistograms(histo *JpegHistogram, num *int, histo_indexes *int, depth []byte) int {
+  for i:=0 ; i < *num * JpegHistogram_kSize; i++ {
+    depth[0] = 0
+  }
+  var costs [kMaxComponents]int;
   for i := 0; i < *num; i++ {
     histo_indexes[i] = i;
-    std::vector<HuffmanTree> tree(2 * JpegHistogram::kSize + 1);
-    CreateHuffmanTree(histo[i].counts, JpegHistogram::kSize,
-                      kJpegHuffmanMaxBitLength, &tree[0],
-                      &depth[i * JpegHistogram::kSize]);
-    costs[i] = (HistogramHeaderCost(histo[i]) +
-                HistogramEntropyCost(histo[i],
-                                     &depth[i * JpegHistogram::kSize]));
+    tree := make([]HuffmanTree, 2 * JpegHistogram_kSize + 1);
+    CreateHuffmanTree(histo[i].counts, JpegHistogram_kSize,
+                      kJpegHuffmanMaxBitLength, tree,
+                      depth[i * JpegHistogram_kSize:]);
+    costs[i] = HistogramHeaderCost(histo[i]) +
+               HistogramEntropyCost(histo[i], depth[i * JpegHistogram_kSize:]);
   }
-  const orig_num := *num;
+  orig_num := *num;
   for (*num > 1) {
     last := *num - 1;
     second_last := *num - 2;
-    JpegHistogram combined(histo[last]);
+    combined := NewJpegHistogram(histo[last]);
     combined.AddHistogram(histo[second_last]);
-    std::vector<HuffmanTree> tree(2 * JpegHistogram::kSize + 1);
-    uint8_t depth_combined[JpegHistogram::kSize] = { 0 };
-    CreateHuffmanTree(combined.counts, JpegHistogram::kSize,
-                      kJpegHuffmanMaxBitLength, &tree[0], depth_combined);
+    tree := make([]HuffmanTree, 2 * JpegHistogram_kSize + 1);
+    var depth_combined [JpegHistogram_kSize]byte
+    CreateHuffmanTree(combined.counts, JpegHistogram_kSize,
+                      kJpegHuffmanMaxBitLength, tree, depth_combined);
     cost_combined := (HistogramHeaderCost(combined) +
                             HistogramEntropyCost(combined, depth_combined));
     if (cost_combined < costs[last] + costs[second_last]) {
       histo[second_last] = combined;
       histo[last] = JpegHistogram();
       costs[second_last] = cost_combined;
-      memcpy(&depth[second_last * JpegHistogram::kSize], depth_combined,
-             sizeof(depth_combined));
+      copy(depth[second_last * JpegHistogram_kSize:], depth_combined);
       for i := 0; i < orig_num; i++ {
         if (histo_indexes[i] == last) {
           histo_indexes[i] = second_last;
         }
       }
-      --(*num);
+      (*num)--;
     } else {
       break;
     }
@@ -379,23 +380,22 @@ size_t ClusterHistograms(JpegHistogram* histo, size_t* num,
   return (total_cost + 7) / 8;
 }
 
-func EstimateJpegDataSize(num_components int,
-                            const std::vector<JpegHistogram>& histograms) int {
-  assert(histograms.size() == 2 * num_components);
-  std::vector<JpegHistogram> clustered = histograms;
+func EstimateJpegDataSize(num_components int, histograms []JpegHistogram) int {
+  assert(len(histograms) == 2 * num_components);
+  clustered := make([]JpegHistogram, len(histograms))
+  copy(clustered, histograms)
   num_dc := num_components;
   num_ac := num_components;
-  int indexes[kMaxComponents];
-  uint8_t depth[kMaxComponents * JpegHistogram::kSize];
-  return (ClusterHistograms(&clustered[0], &num_dc, indexes, depth) +
-          ClusterHistograms(&clustered[num_components], &num_ac, indexes,
-                            depth));
+  var indexes [kMaxComponents]int;
+  var depth[kMaxComponents * JpegHistogram_kSize]byte;
+  return (ClusterHistograms(clustered, &num_dc, indexes, depth) +
+          ClusterHistograms(clustered[num_components:], &num_ac, indexes, depth));
 }
 
 // Writes DHT and SOS marker segments to out and fills in DC/AC Huffman tables
 // for each component of the image.
 func BuildAndEncodeHuffmanCodes(jpg *JPEGData, out JPEGOutput) (ok bool, dc_huff_tables, ac_huff_tables []HuffmanCodeTable) {
-  const ncomps := len(jpg.components);
+   ncomps := len(jpg.components);
   dc_huff_tables = make([]HuffmanCodeTable, ncomps);
   ac_huff_tables = make([]HuffmanCodeTable, ncomps);
 
@@ -405,21 +405,19 @@ func BuildAndEncodeHuffmanCodes(jpg *JPEGData, out JPEGOutput) (ok bool, dc_huff
 
   // Cluster DC histograms.
   num_dc_histo := ncomps;
-  int dc_histo_indexes[kMaxComponents];
-  std::vector<uint8_t> depths(ncomps * JpegHistogram::kSize);
-  ClusterHistograms(&histograms[0], &num_dc_histo, dc_histo_indexes,
-                    &depths[0]);
+  var dc_histo_indexes [kMaxComponents]int;
+  depths :- make([]byte, ncomps * JpegHistogram_kSize);
+  ClusterHistograms(histograms, &num_dc_histo, dc_histo_indexes, depths);
 
   // Build separate AC histograms for each component.
   histograms.resize(num_dc_histo + ncomps);
-  depths.resize((num_dc_histo + ncomps) * JpegHistogram::kSize);
+  depths.resize((num_dc_histo + ncomps) * JpegHistogram_kSize);
   BuildACHistograms(jpg, &histograms[num_dc_histo]);
 
   // Cluster AC histograms.
   num_ac_histo := ncomps;
-  int ac_histo_indexes[kMaxComponents];
-  ClusterHistograms(&histograms[num_dc_histo], &num_ac_histo, ac_histo_indexes,
-                    &depths[num_dc_histo * JpegHistogram::kSize]);
+  var ac_histo_indexes [kMaxComponents]int;
+  ClusterHistograms(histograms[num_dc_histo:], &num_ac_histo, ac_histo_indexes, depths[num_dc_histo * JpegHistogram_kSize:]);
 
   // Compute DHT and SOS marker data sizes and start emitting DHT marker.
   num_histo := num_dc_histo + num_ac_histo;
@@ -428,71 +426,82 @@ func BuildAndEncodeHuffmanCodes(jpg *JPEGData, out JPEGOutput) (ok bool, dc_huff
   for i := 0; i < histograms.size(); i++ {
     total_count += histograms[i].NumSymbols();
   }
-  const dht_marker_len :=
-      2 + num_histo * (kJpegHuffmanMaxBitLength + 1) + total_count;
-  const sos_marker_len := 6 + 2 * ncomps;
-  std::vector<uint8_t> data(dht_marker_len + sos_marker_len + 4);
+  dht_marker_len := 2 + num_histo * (kJpegHuffmanMaxBitLength + 1) + total_count;
+  sos_marker_len := 6 + 2 * ncomps;
+  data := make([]byte, dht_marker_len + sos_marker_len + 4);
   pos := 0;
-  data[pos++] = 0xff;
-  data[pos++] = 0xc4;
-  data[pos++] = static_cast<uint8_t>(dht_marker_len >> 8);
-  data[pos++] = dht_marker_len & 0xff;
+  data[pos] = 0xff; pos++
+  data[pos] = 0xc4; pos++
+  data[pos] = byte(dht_marker_len >> 8); pos++
+  data[pos] = dht_marker_len & 0xff; pos++
 
   // Compute Huffman codes for each histograms.
   for i := 0; i < num_histo; i++ {
-    const bool is_dc = static_cast<size_t>(i) < num_dc_histo;
-    const idx := is_dc ? i : i - num_dc_histo;
-    int counts[kJpegHuffmanMaxBitLength + 1] = { 0 };
-    int values[JpegHistogram::kSize] = { 0 };
-    BuildHuffmanCode(&depths[i * JpegHistogram::kSize], counts, values);
-    HuffmanCodeTable table;
-    for j := 0; j < 256; j++ table.depth[j] = 255;
+    is_dc := i < num_dc_histo;
+    idx := tern(is_dc, i, i - num_dc_histo);
+    var counts [kJpegHuffmanMaxBitLength + 1]int
+    var values[JpegHistogram_kSize]int
+    BuildHuffmanCode(depths[i * JpegHistogram_kSize:], counts, values);
+    var table HuffmanCodeTable;
+    for j := 0; j < 256; j++ {
+      table.depth[j] = 255;
+    }
     BuildHuffmanCodeTable(counts, values, &table);
     for c := 0; c < ncomps; c++ {
       if (is_dc) {
-        if (dc_histo_indexes[c] == idx) (*dc_huff_tables)[c] = table;
+        if (dc_histo_indexes[c] == idx) {
+          dc_huff_tables[c] = table;
+        }
       } else {
-        if (ac_histo_indexes[c] == idx) (*ac_huff_tables)[c] = table;
+        if (ac_histo_indexes[c] == idx) {
+          ac_huff_tables[c] = table;
+        }
       }
     }
     max_length := kJpegHuffmanMaxBitLength;
-    for (max_length > 0 && counts[max_length] == 0) --max_length;
-    --counts[max_length];
+    for (max_length > 0 && counts[max_length] == 0) {
+      max_length--
+    }
+    counts[max_length]--;
     total_count := 0;
-    for j := 0; j <= max_length; j++ total_count += counts[j];
-    data[pos++] = is_dc ? i : static_cast<uint8_t>(i - num_dc_histo + 0x10);
+    for j := 0; j <= max_length; j++ {
+      total_count += counts[j];
+    }
+
+    data[pos] = byte(tern(is_dc, i, i - num_dc_histo + 0x10))
+    pos++
     for j := 1; j <= kJpegHuffmanMaxBitLength; j++ {
-      data[pos++] = counts[j];
+      data[pos] = counts[j];
+      pos++
     }
     for j := 0; j < total_count; j++ {
-      data[pos++] = values[j];
+      data[pos] = values[j];
+      pos++
     }
   }
 
   // Emit SOS marker data.
-  data[pos++] = 0xff;
-  data[pos++] = 0xda;
-  data[pos++] = static_cast<uint8_t>(sos_marker_len >> 8);
-  data[pos++] = sos_marker_len & 0xff;
-  data[pos++] = ncomps;
+  data[pos] = 0xff; pos++
+  data[pos] = 0xda; pos++
+  data[pos] = static_cast<uint8_t>(sos_marker_len >> 8); pos++
+  data[pos] = sos_marker_len & 0xff; pos++
+  data[pos] = ncomps; pos++
   for i := 0; i < ncomps; i++ {
-    data[pos++] = jpg.components[i].id;
-    data[pos++] = (dc_histo_indexes[i] << 4) | ac_histo_indexes[i];
+    data[pos] = jpg.components[i].id; pos++
+    data[pos] = (dc_histo_indexes[i] << 4) | ac_histo_indexes[i]; pos++
   }
-  data[pos++] = 0;
-  data[pos++] = 63;
-  data[pos++] = 0;
-  assert(pos == data.size());
-  return JPEGWrite(out, &data[0], data.size());
+  data[pos] = 0; pos++
+  data[pos] = 63; pos++
+  data[pos] = 0; pos++
+  assert(pos == len(data));
+  return JPEGWrite(out, data, len(data));
 }
 
-func EncodeDCTBlockSequential(const coeff_t* coeffs,
-                              const HuffmanCodeTable& dc_huff,
-                              const HuffmanCodeTable& ac_huff,
-                              coeff_t* last_dc_coeff,
-                              BitWriter* bw) {
-  coeff_t temp2;
-  coeff_t temp;
+func EncodeDCTBlockSequential(coeffs []coeff_t,
+                              dc_huff, ac_huff *HuffmanCodeTable,
+                              last_dc_coeff *int,
+                              bw *BitWriter) {
+  var temp2, temp int;
   temp2 = coeffs[0];
   temp = temp2 - *last_dc_coeff;
   *last_dc_coeff = temp2;
@@ -508,13 +517,14 @@ func EncodeDCTBlockSequential(const coeff_t* coeffs,
   }
   r := 0;
   for k := 1; k < 64; k++ {
-    if ((temp = coeffs[kJPEGNaturalOrder[k]]) == 0) {
+    temp = coeffs[kJPEGNaturalOrder[k]]
+    if (temp == 0) {
       r++;
       continue;
     }
     if (temp < 0) {
       temp = -temp;
-      temp2 = ~temp;
+      temp2 = ^temp;
     } else {
       temp2 = temp;
     }
@@ -534,16 +544,15 @@ func EncodeDCTBlockSequential(const coeff_t* coeffs,
 }
 
 func EncodeScan(jpg *JPEGData,
-                const std::vector<HuffmanCodeTable>& dc_huff_table,
-                const std::vector<HuffmanCodeTable>& ac_huff_table,
+                dc_huff_table, ac_huff_table []HuffmanCodeTable,
                 out JPEGOutput) bool {
-  coeff_t last_dc_coeff[kMaxComponents] = { 0 };
-  BitWriter bw(1 << 17);
+  var last_dc_coeff [kMaxComponents]int
+  bw := NewBitWriter(1 << 17);
   for mcu_y := 0; mcu_y < jpg.MCU_rows; mcu_y++ {
     for mcu_x := 0; mcu_x < jpg.MCU_cols; mcu_x++ {
       // Encode one MCU
-      for i := 0; i < jpg.components.size(); i++ {
-        const JPEGComponent& c = jpg.components[i];
+      for i := 0; i < len(jpg.components); i++ {
+        c := &jpg.components[i];
         nblocks_y := c.v_samp_factor;
         nblocks_x := c.h_samp_factor;
         for iy := 0; iy < nblocks_y; iy++ {
@@ -569,13 +578,10 @@ func EncodeScan(jpg *JPEGData,
   return !bw.overflow && JPEGWrite(out, bw.data.get(), bw.pos);
 }
 
-}  // namespace
-
 func WriteJpeg(jpg *JPEGData, strip_metadata bool, out JPEGOutput) bool {
-  static const uint8_t kSOIMarker[2] = { 0xff, 0xd8 };
-  static const uint8_t kEOIMarker[2] = { 0xff, 0xd9 };
-  std::vector<HuffmanCodeTable> dc_codes;
-  std::vector<HuffmanCodeTable> ac_codes;
+  kSOIMarker := [2]byte{ 0xff, 0xd8 };
+  kEOIMarker := [2]byte{ 0xff, 0xd9 };
+  var dc_codes, ac_codes []HuffmanCodeTable;
   return (JPEGWrite(out, kSOIMarker, sizeof(kSOIMarker)) &&
           EncodeMetadata(jpg, strip_metadata, out) &&
           EncodeDQT(jpg.quant, out) &&
@@ -586,15 +592,11 @@ func WriteJpeg(jpg *JPEGData, strip_metadata bool, out JPEGOutput) bool {
           (strip_metadata || JPEGWrite(out, jpg.tail_data)));
 }
 
-int NullOut(void* data, const uint8_t* buf, size_t count) {
-  return count;
+func NullOut(data interface{}, buf []byte) int {
+  return len(buf);
 }
 
-func BuildSequentialHuffmanCodes(
-    jpg *JPEGData,
-    std::vector<HuffmanCodeTable>* dc_huffman_code_tables,
-    std::vector<HuffmanCodeTable>* ac_huffman_code_tables) {
+func BuildSequentialHuffmanCodes(jpg *JPEGData, dc_huffman_code_tables, ac_huffman_code_tables *[]HuffmanCodeTable) {
   var out JPEGOutput
-  BuildAndEncodeHuffmanCodes(jpg, out, dc_huffman_code_tables,
-                             ac_huffman_code_tables);
+  BuildAndEncodeHuffmanCodes(jpg, out, dc_huffman_code_tables, ac_huffman_code_tables);
 }
