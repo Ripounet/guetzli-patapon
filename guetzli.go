@@ -1,5 +1,14 @@
 package guetzli_patapon
 
+import (
+	"bytes"
+	"flag"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+)
+
 const (
 	kDefaultJPEGQuality = 95
 
@@ -12,26 +21,28 @@ const (
 )
 
 func BlendOnBlack(val, alpha byte) byte {
-	return (int(val)*int(alpha) + 128) / 255
+	return byte((int(val)*int(alpha) + 128) / 255)
 }
 
-func ReadPNG(string data) (ok bool, xsize, ysize int, rgb []byte) {
-	png_ptr := png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr)
+func ReadPNG(data string) (ok bool, xsize, ysize int, rgb []byte) {
+	png_ptr := png_create_read_struct(PNG_LIBPNG_VER_STRING, nil, nil, nil)
 	if png_ptr == nil {
 		return
 	}
 
 	info_ptr := png_create_info_struct(png_ptr)
 	if info_ptr == nil {
-		png_destroy_read_struct(&png_ptr, nullptr, nullptr)
+		png_destroy_read_struct(&png_ptr, nil, nil)
 		return
 	}
 
+	/* TODO PATAPON: not applicable?
 	if setjmp(png_jmpbuf(png_ptr)) != 0 {
 		// Ok we are here because of the setjmp.
-		png_destroy_read_struct(&png_ptr, &info_ptr, nullptr)
+		png_destroy_read_struct(&png_ptr, &info_ptr, nil)
 		return
 	}
+	*/
 
 	panic("TODO")
 	/*
@@ -53,7 +64,7 @@ func ReadPNG(string data) (ok bool, xsize, ysize int, rgb []byte) {
 	// expand == palettes . rgb, grayscale . 8 bit images, tRNS . alpha.
 	const png_transforms uint = PNG_TRANSFORM_PACKING | PNG_TRANSFORM_EXPAND | PNG_TRANSFORM_STRIP_16
 
-	png_read_png(png_ptr, info_ptr, png_transforms, nullptr)
+	png_read_png(png_ptr, info_ptr, png_transforms, nil)
 
 	png_bytep * row_pointers = png_get_rows(png_ptr, info_ptr)
 
@@ -107,10 +118,10 @@ func ReadPNG(string data) (ok bool, xsize, ysize int, rgb []byte) {
 			}
 		}
 	default:
-		png_destroy_read_struct(&png_ptr, &info_ptr, nullptr)
+		png_destroy_read_struct(&png_ptr, &info_ptr, nil)
 		return
 	}
-	png_destroy_read_struct(&png_ptr, &info_ptr, nullptr)
+	png_destroy_read_struct(&png_ptr, &info_ptr, nil)
 	ok = true
 	return
 }
@@ -148,7 +159,7 @@ func WriteFileOrDie(filename string, contents []byte) {
 var (
 	flagVerbose    = flag.Bool("verbose", false, "Print a verbose trace of all attempts to standard output")
 	flagQuality    = flag.Int("quality", kDefaultJPEGQuality, "Visual quality to aim for, expressed as a JPEG quality value")
-	flagMemLimit   = flag.iNT("memlimit", kDefaultMemlimitMB, "Memory limit in MB. Guetzli will fail if unable to stay under the limit")
+	flagMemLimit   = flag.Int("memlimit", kDefaultMemlimitMB, "Memory limit in MB. Guetzli will fail if unable to stay under the limit")
 	flagNoMemLimit = flag.Bool("nomemlimit", false, "Do not limit memory usage")
 )
 

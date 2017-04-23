@@ -63,7 +63,7 @@ func (bc *ButteraugliComparator) Compare(img OutputImage) {
 	OpsinDynamicsImage(bc.width_, bc.height_, rgb)
 	bc.distmap_ = bc.comparator_.DiffmapOpsinDynamicsImage(bc.rgb_linear_pregamma_, rgb)
 	bc.distance_ = float32(ButteraugliScoreFromDiffmap(bc.distmap_))
-	GUETZLI_LOG(stats_, " BA[100.00%%] D[%6.4f]", distance_)
+	GUETZLI_LOG(bc.stats_, " BA[100.00%%] D[%6.4f]", bc.distance_)
 }
 
 func (bc *ButteraugliComparator) StartBlockComparisons() {
@@ -160,23 +160,23 @@ func (bc *ButteraugliComparator) ComputeBlockErrorAdjustmentWeights(
 	max_block_dist int,
 	target_mul float64,
 	factor_x, factor_y int,
-	distmap []float64,
-	block_weight []float64) {
+	distmap []float32,
+	block_weight []float32) {
 	target_distance := float64(bc.target_distance_) * target_mul
 	sizex := 8 * factor_x
 	sizey := 8 * factor_y
 	block_width := (bc.width_ + sizex - 1) / sizex
 	block_height := (bc.height_ + sizey - 1) / sizey
-	max_dist_per_block := make([]float64, block_width*block_height)
+	max_dist_per_block := make([]float32, block_width*block_height)
 	for block_y := 0; block_y < block_height; block_y++ {
 		for block_x := 0; block_x < block_width; block_x++ {
 			block_ix := block_y*block_width + block_x
 			x_max := std_min(bc.width_, sizex*(block_x+1))
 			y_max := std_min(bc.height_, sizey*(block_y+1))
-			max_dist := 0.0
+			max_dist := float32(0.0)
 			for y := sizey * block_y; y < y_max; y++ {
 				for x := sizex * block_x; x < x_max; x++ {
-					max_dist = std_maxFloat64(max_dist, distmap[y*bc.width_+x])
+					max_dist = std_maxFloat32(max_dist, distmap[y*bc.width_+x])
 				}
 			}
 			max_dist_per_block[block_ix] = max_dist
@@ -192,23 +192,23 @@ func (bc *ButteraugliComparator) ComputeBlockErrorAdjustmentWeights(
 			y_max := std_min(block_height, block_y+1+max_block_dist)
 			for y := y_min; y < y_max; y++ {
 				for x := x_min; x < x_max; x++ {
-					max_local_dist = std_maxFloat64(max_local_dist, max_dist_per_block[y*block_width+x])
+					max_local_dist = std_maxFloat64(max_local_dist, float64(max_dist_per_block[y*block_width+x]))
 				}
 			}
 			if direction > 0 {
-				if max_dist_per_block[block_ix] <= target_distance && max_local_dist <= 1.1*target_distance {
+				if float64(max_dist_per_block[block_ix]) <= target_distance && max_local_dist <= 1.1*target_distance {
 					block_weight[block_ix] = 1.0
 				}
 			} else {
 				const kLocalMaxWeight = 0.5
-				if max_dist_per_block[block_ix] <= (1-kLocalMaxWeight)*target_distance+kLocalMaxWeight*max_local_dist {
+				if float64(max_dist_per_block[block_ix]) <= (1-kLocalMaxWeight)*target_distance+kLocalMaxWeight*max_local_dist {
 					continue
 				}
 				for y := y_min; y < y_max; y++ {
 					for x := x_min; x < x_max; x++ {
 						d := std_max(std_abs(y-block_y), std_abs(x-block_x))
 						ix := y*block_width + x
-						block_weight[ix] = std_maxFloat64(block_weight[ix], 1.0/(float64(d)+1.0))
+						block_weight[ix] = std_maxFloat32(block_weight[ix], 1/(float32(d)+1))
 					}
 				}
 			}

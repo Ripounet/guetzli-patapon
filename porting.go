@@ -57,7 +57,7 @@ func std_minFloat32(a, b float32) float32 {
 	return a
 }
 
-func std_maxFloa32(a, b float32) float32 {
+func std_maxFloat32(a, b float32) float32 {
 	if b > a {
 		return b
 	}
@@ -153,4 +153,8 @@ var stderr = os.Stderr
 var (
 	ComputeBlockIDCT func(block []coeff_t, out []byte)
 	GUETZLI_LOG      = func(x ...interface{}) {}
+)
+
+type (
+	JpegHistogram struct{}
 )

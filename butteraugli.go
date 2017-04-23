@@ -100,7 +100,7 @@ func Blur(xsize, ysize int, channel []float32, sigma, border_ratio float64) {
 // To change this to n, add the relevant FFTn function and kFFTnMapIndexTable.
 const (
 	kBlockEdge     = 8
-	kBlockSize     = kBlockEdge * kBlockEdge
+	kBlockSize_    = kBlockEdge * kBlockEdge
 	kBlockEdgeHalf = kBlockEdge / 2
 	kBlockHalf     = kBlockEdge * kBlockEdgeHalf
 )
@@ -534,7 +534,7 @@ func RealFFT8(in []float64, out []Complex) {
 // rest unmodified.
 func ButteraugliFFTSquared(block []float64) {
 	global_mul := 0.000064
-	block_c := make([]Complex, kBlockSize)
+	block_c := make([]Complex, kBlockSize_)
 	assert(kBlockEdge == 8)
 	for y := 0; y < kBlockEdge; y++ {
 		RealFFT8(block[y*kBlockEdge:], block_c[y*kBlockEdge:])
@@ -566,11 +566,11 @@ func ButteraugliBlockDiff(xyb0, xyb1 []float64, diff_xyb_dc, diff_xyb_ac, diff_x
 
 	var avgdiff_xyb [3]float64
 	var avgdiff_edge [3][4]float64
-	for i := 0; i < 3*kBlockSize; i++ {
+	for i := 0; i < 3*kBlockSize_; i++ {
 		diff_xyb := xyb0[i] - xyb1[i]
-		c := i / kBlockSize
-		avgdiff_xyb[c] += diff_xyb / kBlockSize
-		k := i % kBlockSize
+		c := i / kBlockSize_
+		avgdiff_xyb[c] += diff_xyb / kBlockSize_
+		k := i % kBlockSize_
 		kx := k % kBlockEdge
 		ky := k / kBlockEdge
 		var h_edge_idx, v_edge_idx int
@@ -610,16 +610,16 @@ func ButteraugliBlockDiff(xyb0, xyb1 []float64, diff_xyb_dc, diff_xyb_ac, diff_x
 
 	xyb_avg := xyb0
 	xyb_halfdiff := xyb1
-	for i := 0; i < 3*kBlockSize; i++ {
+	for i := 0; i < 3*kBlockSize_; i++ {
 		avg := (xyb0[i] + xyb1[i]) / 2
 		halfdiff := (xyb0[i] - xyb1[i]) / 2
 		xyb_avg[i] = avg
 		xyb_halfdiff[i] = halfdiff
 	}
-	y_avg := xyb_avg[kBlockSize:]
+	y_avg := xyb_avg[kBlockSize_:]
 	x_halfdiff_squared := xyb_halfdiff[0:]
-	y_halfdiff := xyb_halfdiff[kBlockSize:]
-	z_halfdiff_squared := xyb_halfdiff[2*kBlockSize:]
+	y_halfdiff := xyb_halfdiff[kBlockSize_:]
+	z_halfdiff_squared := xyb_halfdiff[2*kBlockSize_:]
 	ButteraugliFFTSquared(y_avg)
 	ButteraugliFFTSquared(x_halfdiff_squared)
 	ButteraugliFFTSquared(y_halfdiff)
