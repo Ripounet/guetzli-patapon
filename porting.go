@@ -139,7 +139,7 @@ func one(b bool) int {
 }
 
 // tern mimicks ternary operator (b?x:y), only for int type.
-func tern(b bool, x,y int) int {
+func tern(b bool, x, y int) int {
 	if b {
 		return x
 	}
@@ -161,5 +161,7 @@ var stderr = os.Stderr
 var (
 	GUETZLI_LOG      = func(x ...interface{}) {}
 	Log2FloorNonZero func(uint32) int
-	Log2Floor func(uint32) int
+	Log2Floor        func(uint32) int
 )
+
+func (*Processor) OutputJpeg(*JPEGData, *string) { panic("Not Yet Implemented") }

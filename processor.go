@@ -105,10 +105,10 @@ func GuetzliStringOut(data []byte, buf []byte, count int) int {
   return count;
 }
 
-func OutputJpeg(jpg *JPEGData, string* out) {
+func (p *Processor)  OutputJpeg(jpg *JPEGData, string* out) {
   out.clear();
   JPEGOutput output(GuetzliStringOut, out);
-  if !WriteJpeg(jpg, params_.clear_metadata, output) {
+  if !WriteJpeg(jpg, p.params_.clear_metadata, output) {
     panic("ouch");
   }
 }
@@ -301,19 +301,19 @@ func (qmg *QuantMatrixGenerator) getQuantMatrixWithHeuristicScore(score float64,
 	}
 }
 
-func TryQuantMatrix(jpg_in *JPEGData,
+func (p *Processor) TryQuantMatrix(jpg_in *JPEGData,
 	target_mul float32,
 	q [][kDCTBlockSize]int,
 	img *OutputImage) QuantData {
 	var data QuantData
-	copy(data.q, q)
+	copy(data.q[:], q)
 	img.CopyFromJpegData(jpg_in)
-	img.ApplyGlobalQuantization(data.q)
+	img.ApplyGlobalQuantization(data.q[:])
 	var encoded_jpg string
 	{
 		jpg_out := *jpg_in
 		img.SaveToJpegData(&jpg_out)
-		OutputJpeg(jpg_out, &encoded_jpg)
+		p.OutputJpeg(&jpg_out, &encoded_jpg)
 	}
 	// GUETZLI_LOG(stats_, "Iter %2d: %s quantization matrix:\n",
 	//             stats_.counters[kNumItersCnt] + 1,
@@ -323,45 +323,45 @@ func TryQuantMatrix(jpg_in *JPEGData,
 	//             stats_.counters[kNumItersCnt] + 1,
 	//             img.FrameTypeStr().c_str(),
 	//             QuantMatrixHeuristicScore(q), encoded_jpg.size());
-	stats_.counters[kNumItersCnt]++
-	comparator_.Compare(*img)
-	data.dist_ok = comparator_.DistanceOK(target_mul)
+	p.stats_.counters[kNumItersCnt]++
+	p.comparator_.Compare(img)
+	data.dist_ok = p.comparator_.DistanceOK(float64(target_mul))
 	data.jpg_size = len(encoded_jpg)
-	MaybeOutput(encoded_jpg)
+	p.MaybeOutput(encoded_jpg)
 	return data
 }
 
-func SelectQuantMatrix(jpg_in *JPEGData, downsample bool,
+func (p *Processor) SelectQuantMatrix(jpg_in *JPEGData, downsample bool,
 	best_q [][kDCTBlockSize]int,
 	img *OutputImage) bool {
-	qgen := quantMatrixGenerator(downsample, stats_)
+	qgen := quantMatrixGenerator(downsample, p.stats_)
 	// Don't try to go up to exactly the target distance when selecting a
 	// quantization matrix, since we will need some slack to do the frequency
 	// masking later.
 	const target_mul_high float32 = 0.97
 	const target_mul_low float32 = 0.95
 
-	best := TryQuantMatrix(jpg_in, target_mul_high, best_q, img)
+	best := p.TryQuantMatrix(jpg_in, target_mul_high, best_q, img)
 	for {
 		var q_next [][kDCTBlockSize]int
 		if !qgen.GetNext(q_next) {
 			break
 		}
 
-		data := TryQuantMatrix(jpg_in, target_mul_high, q_next, img)
-		qgen.Add(data)
-		if CompareQuantData(data, best) {
+		data := p.TryQuantMatrix(jpg_in, target_mul_high, q_next, img)
+		qgen.Add(&data)
+		if CompareQuantData(&data, &best) {
 			best = data
-			if data.dist_ok && !comparator_.DistanceOK(target_mul_low) {
+			if data.dist_ok && !p.comparator_.DistanceOK(float64(target_mul_low)) {
 				break
 			}
 		}
 	}
 
-	memcpy(&best_q[0][0], &best.q[0][0], kBlockSize*sizeof(best_q[0][0]))
+	copy(best_q[0][:], best.q[0][:])
 	// GUETZLI_LOG(stats_, "\n%s selected quantization matrix:\n",
 	//             downsample ? "YUV420" : "YUV444");
-	GUETZLI_LOG_QUANT(stats_, best_q)
+	// GUETZLI_LOG_QUANT(stats_, best_q)
 	return best.dist_ok
 }
 
@@ -379,7 +379,7 @@ func (p pairs) Less(i, j int) bool { return p[i].f < p[j].f }
 func (p pairs) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // REQUIRES: block[c*64...(c*64+63)] is all zero if (comp_mask & (1<<c)) == 0.
-func ComputeBlockZeroingOrder(
+func (p *Processor) ComputeBlockZeroingOrder(
 	block, orig_block []coeff_t,
 	block_x, block_y, factor_x int,
 	factor_y int, comp_mask byte, img *OutputImage) (output_order []CoeffData) {
@@ -403,10 +403,10 @@ func ComputeBlockZeroingOrder(
 			idx := c*kDCTBlockSize + k
 			if block[idx] != 0 {
 				var score float32
-				if params_.new_zeroing_model {
+				if p.params_.new_zeroing_model {
 					score = std_abs(orig_block[idx])*csf[idx] + bias[idx]
 				} else {
-					score = float((std_abs(orig_block[idx]) - kJPEGZigZagOrder[k]/64.0) *
+					score = float32((std_abs(orig_block[idx]) - kJPEGZigZagOrder[k]/64.0) *
 						kWeight[c] / oldCsf[k])
 				}
 				input_order = append(input_order, pair{idx, score})
