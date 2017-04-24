@@ -132,7 +132,7 @@ func EncodeDQT(quant []JPEGQuantTable, out JPEGOutput) bool {
       data[pos] = byte(val & 0xff); pos++
     }
   }
-  return JPEGWrite(out, data[pos:]);
+  return JPEGWrite(out, data[:pos]);
 }
 
 func EncodeSOF(jpg *JPEGData, out JPEGOutput) bool {
@@ -159,7 +159,7 @@ func EncodeSOF(jpg *JPEGData, out JPEGOutput) bool {
     }
     data[pos] = byte(jpg.quant[quant_idx].index); pos++
   }
-  return JPEGWrite(out, data, pos);
+  return JPEGWrite(out, data[:pos]);
 }
 
 // Builds a JPEG-style huffman code from the given bit depths.
@@ -495,7 +495,7 @@ func BuildAndEncodeHuffmanCodes(jpg *JPEGData, out JPEGOutput) (ok bool, dc_huff
   data[pos] = 63; pos++
   data[pos] = 0; pos++
   assert(pos == len(data));
-  return JPEGWrite(out, data, len(data)), dc_huff_tables, ac_huff_tables
+  return JPEGWrite(out, data), dc_huff_tables, ac_huff_tables
 }
 
 func EncodeDCTBlockSequential(coeffs []coeff_t,
@@ -568,7 +568,7 @@ func EncodeScan(jpg *JPEGData,
         }
       }
       if (bw.pos > (1 << 16)) {
-        if (!JPEGWrite(out, bw.data.get(), bw.pos)) {
+        if (!JPEGWrite(out, bw.data[:bw.pos])) {
           return false;
         }
         bw.pos = 0;
@@ -576,21 +576,21 @@ func EncodeScan(jpg *JPEGData,
     }
   }
   bw.JumpToByteBoundary();
-  return !bw.overflow && JPEGWrite(out, bw.data.get(), bw.pos);
+  return !bw.overflow && JPEGWrite(out, bw.data[:bw.pos]);
 }
 
 func WriteJpeg(jpg *JPEGData, strip_metadata bool, out JPEGOutput) bool {
   kSOIMarker := [2]byte{ 0xff, 0xd8 };
   kEOIMarker := [2]byte{ 0xff, 0xd9 };
   var dc_codes, ac_codes []HuffmanCodeTable;
-  return (JPEGWrite(out, kSOIMarker, sizeof(kSOIMarker)) &&
+  return (JPEGWrite(out, kSOIMarker[:]) &&
           EncodeMetadata(jpg, strip_metadata, out) &&
           EncodeDQT(jpg.quant, out) &&
           EncodeSOF(jpg, out) &&
           BuildAndEncodeHuffmanCodes(jpg, out, &dc_codes, &ac_codes) &&
           EncodeScan(jpg, dc_codes, ac_codes, out) &&
-          JPEGWrite(out, kEOIMarker, sizeof(kEOIMarker)) &&
-          (strip_metadata || JPEGWrite(out, jpg.tail_data)));
+          JPEGWrite(out, kEOIMarker[:]) &&
+          (strip_metadata || JPEGWrite(out, []byte(jpg.tail_data))));
 }
 
 func NullOut(data interface{}, buf []byte) int {

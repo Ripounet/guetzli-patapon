@@ -263,7 +263,7 @@ func PreProcessChannel(w, h, channel int, sigma, amount float32, blur, sharpen b
 }
 
 func Clip(val float32) float32 {
-	return std_maxFloa32(0.0, std_minFloat32(255.0, val))
+	return std_maxFloat32(0.0, std_minFloat32(255.0, val))
 }
 
 func RGBToY(r, g, b float32) float32 {

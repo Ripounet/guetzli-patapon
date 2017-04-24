@@ -51,7 +51,7 @@ type QuantData struct {
 
 type Processor struct {
 	params_       Params
-	comparator_   *Comparator
+	comparator_   Comparator
 	final_output_ *GuetzliOutput
 	stats_        *ProcessStats
 }
@@ -62,7 +62,7 @@ func RemoveOriginalQuantization(jpg *JPEGData, q_in [][kDCTBlockSize]int) {
 		q := jpg.quant[c.quant_idx].values
 		copy(q_in[i][:kDCTBlockSize], q)
 		for j := 0; j < len(c.coeffs); j++ {
-			c.coeffs[j] *= q[j%kDCTBlockSize]
+			c.coeffs[j] *= coeff_t(q[j%kDCTBlockSize])
 		}
 	}
 	var q [3][kDCTBlockSize]int
@@ -71,26 +71,26 @@ func RemoveOriginalQuantization(jpg *JPEGData, q_in [][kDCTBlockSize]int) {
 			q[i][j] = 1
 		}
 	}
-	SaveQuantTables(q, jpg)
+	SaveQuantTables(q[:], jpg)
 }
 
-func DownsampleImage(img *OutputImage) {
+func (p *Processor) DownsampleImage(img *OutputImage) {
 	if img.component(1).factor_x() > 1 || img.component(1).factor_y() > 1 {
 		return
 	}
 	var cfg DownsampleConfig
-	cfg.use_silver_screen = params_.use_silver_screen
-	img.Downsample(cfg)
+	cfg.use_silver_screen = p.params_.use_silver_screen
+	img.Downsample(&cfg)
 }
 
 func CheckJpegSanity(jpg *JPEGData) bool {
 	kMaxComponent := 1 << 12
 	for _, comp := range jpg.components {
 		quant_table := jpg.quant[comp.quant_idx]
-		for i := 0; i < comp.coeffs.size(); i++ {
+		for i := 0; i < len(comp.coeffs); i++ {
 			coeff := comp.coeffs[i]
 			quant := quant_table.values[i%kDCTBlockSize]
-			if std_abs(int64_t(coeff)*quant) > kMaxComponent {
+			if std_abs(int(coeff)*quant) > kMaxComponent {
 				return false
 			}
 		}
@@ -114,17 +114,17 @@ func OutputJpeg(jpg *JPEGData, string* out) {
 }
 */
 
-func MaybeOutput(encoded_jpg string) {
-	score := comparator_.ScoreOutputSize(len(encoded_jpg))
-	GUETZLI_LOG(stats_, " Score[%.4f]", score)
-	if score < final_output_.score || final_output_.score < 0 {
-		final_output_.jpeg_data = encoded_jpg
-		final_output_.distmap = comparator_.distmap()
-		final_output_.distmap_aggregate = comparator_.distmap_aggregate()
-		final_output_.score = score
-		GUETZLI_LOG(stats_, " (*)")
+func (p *Processor) MaybeOutput(encoded_jpg string) {
+	score := p.comparator_.ScoreOutputSize(len(encoded_jpg))
+	GUETZLI_LOG(p.stats_, " Score[%.4f]", score)
+	if score < p.final_output_.score || p.final_output_.score < 0 {
+		p.final_output_.jpeg_data = encoded_jpg
+		p.final_output_.distmap = p.comparator_.distmap()
+		p.final_output_.distmap_aggregate = float64(p.comparator_.distmap_aggregate())
+		p.final_output_.score = score
+		GUETZLI_LOG(p.stats_, " (*)")
 	}
-	GUETZLI_LOG(stats_, "\n")
+	GUETZLI_LOG(p.stats_, "\n")
 }
 
 func CompareQuantData(a, b *QuantData) bool {
@@ -170,14 +170,14 @@ func CompareQuantMatrices(a, b []int) int {
 }
 
 func ContrastSensitivity(k int) float64 {
-	return 1.0 / (1.0 + kJPEGZigZagOrder[k]/2.0)
+	return 1.0 / (1.0 + float64(kJPEGZigZagOrder[k])/2.0)
 }
 
 func QuantMatrixHeuristicScore(q [][kDCTBlockSize]int) float64 {
 	score := 0.0
 	for c := 0; c < 3; c++ {
 		for k := 0; k < kDCTBlockSize; k++ {
-			score += 0.5 * (q[c][k] - 1.0) * ContrastSensitivity(k)
+			score += (0.5 * (float64(q[c][k]) - 1.0) * ContrastSensitivity(k))
 		}
 	}
 	return score
@@ -212,56 +212,56 @@ func quantMatrixGenerator(downsample bool, stats *ProcessStats) QuantMatrixGener
 	return gen
 }
 
-func GetNext(q [][kDCTBlockSize]int) bool {
+func (qmg *QuantMatrixGenerator) GetNext(q [][kDCTBlockSize]int) bool {
 	// This loop should terminate by return. This 1000 iteration limit is just a
 	// precaution.
 	for iter := 0; iter < 1000; iter++ {
 		var hscore float64
-		if hscore_b_ == -1.0 {
-			if hscore_a_ == -1.0 {
-				if !downsample {
-					hscore = total_csf_
+		if qmg.hscore_b_ == -1.0 {
+			if qmg.hscore_a_ == -1.0 {
+				if !qmg.downsample_ {
+					hscore = qmg.total_csf_
 				}
 			} else {
-				if hscore_a_ < 5.0*total_csf_ {
-					hscore = hscore_a_ + total_csf_
+				if qmg.hscore_a_ < 5.0*qmg.total_csf_ {
+					hscore = qmg.hscore_a_ + qmg.total_csf_
 				} else {
-					hscore = 2 * (hscore_a_ + total_csf_)
+					hscore = 2 * (qmg.hscore_a_ + qmg.total_csf_)
 				}
 			}
-			if hscore > 100*total_csf_ {
+			if hscore > 100*qmg.total_csf_ {
 				// We could not find a quantization matrix that creates enough
 				// butteraugli error. This can happen if all dct coefficients are
 				// close to zero in the original image.
 				return false
 			}
-		} else if hscore_b_ == 0.0 {
+		} else if qmg.hscore_b_ == 0.0 {
 			return false
-		} else if hscore_a_ == -1.0 {
+		} else if qmg.hscore_a_ == -1.0 {
 			hscore = 0.0
 		} else {
 			var lower_q [3][kDCTBlockSize]int
 			var upper_q [3][kDCTBlockSize]int
 			const kEps = 0.05
-			GetQuantMatrixWithHeuristicScore(
-				(1-kEps)*hscore_a_+kEps*0.5*(hscore_a_+hscore_b_),
-				lower_q)
-			GetQuantMatrixWithHeuristicScore(
-				(1-kEps)*hscore_b_+kEps*0.5*(hscore_a_+hscore_b_),
-				upper_q)
-			if CompareQuantMatrices(&lower_q[0][0], &upper_q[0][0]) == 0 {
+			qmg.getQuantMatrixWithHeuristicScore(
+				(1-kEps)*qmg.hscore_a_+kEps*0.5*(qmg.hscore_a_+qmg.hscore_b_),
+				lower_q[:])
+			qmg.getQuantMatrixWithHeuristicScore(
+				(1-kEps)*qmg.hscore_b_+kEps*0.5*(qmg.hscore_a_+qmg.hscore_b_),
+				upper_q[:])
+			if CompareQuantMatrices(lower_q[0][:], upper_q[0][:]) == 0 {
 				return false
 			}
-			hscore = (hscore_a_ + hscore_b_) * 0.5
+			hscore = (qmg.hscore_a_ + qmg.hscore_b_) * 0.5
 		}
-		GetQuantMatrixWithHeuristicScore(hscore, q)
+		qmg.getQuantMatrixWithHeuristicScore(hscore, q)
 		retry := false
-		for i := 0; i < quants_.size(); i++ {
-			if CompareQuantMatrices(&q[0][0], &quants_[i].q[0][0]) == 0 {
-				if quants_[i].dist_ok {
-					hscore_a_ = hscore
+		for i := 0; i < len(qmg.quants_); i++ {
+			if CompareQuantMatrices(q[0][:], qmg.quants_[i].q[0][:]) == 0 {
+				if qmg.quants_[i].dist_ok {
+					qmg.hscore_a_ = hscore
 				} else {
-					hscore_b_ = hscore
+					qmg.hscore_b_ = hscore
 				}
 				retry = true
 				break
@@ -274,22 +274,22 @@ func GetNext(q [][kDCTBlockSize]int) bool {
 	return false
 }
 
-func Add(data *QuantData) {
-	quants_ = append(quants, data)
-	hscore := QuantMatrixHeuristicScore(data.q)
+func (qmg *QuantMatrixGenerator) Add(data *QuantData) {
+	qmg.quants_ = append(qmg.quants_, data)
+	hscore := QuantMatrixHeuristicScore(data.q[:])
 	if data.dist_ok {
-		hscore_a_ = std_maxFloat64(hscore_a_, hscore)
+		qmg.hscore_a_ = std_maxFloat64(qmg.hscore_a_, hscore)
 	} else {
-		hscore_b_ = hscore
-		if hscore_b_ != -1.0 {
-			hscore_b_ = std_minFloat64(hscore_b_, hscore)
+		qmg.hscore_b_ = hscore
+		if qmg.hscore_b_ != -1.0 {
+			qmg.hscore_b_ = std_minFloat64(qmg.hscore_b_, hscore)
 		}
 	}
 }
 
-func GetQuantMatrixWithHeuristicScore(score float64, q [][kDCTBlockSize]int) {
-	level := int(score / total_csf_)
-	score -= level * total_csf_
+func (qmg *QuantMatrixGenerator) getQuantMatrixWithHeuristicScore(score float64, q [][kDCTBlockSize]int) {
+	level := int(score / qmg.total_csf_)
+	score -= float64(level) * qmg.total_csf_
 	for k := kDCTBlockSize - 1; k >= 0; k-- {
 		for c := 0; c < 3; c++ {
 			q[c][kJPEGNaturalOrder[k]] = 2*level + 1
@@ -326,7 +326,7 @@ func TryQuantMatrix(jpg_in *JPEGData,
 	stats_.counters[kNumItersCnt]++
 	comparator_.Compare(*img)
 	data.dist_ok = comparator_.DistanceOK(target_mul)
-	data.jpg_size = encoded_jpg.size()
+	data.jpg_size = len(encoded_jpg)
 	MaybeOutput(encoded_jpg)
 	return data
 }
@@ -460,7 +460,7 @@ func ComputeBlockZeroingOrder(
 	}
 	// Make the block error values monotonic.
 	min_err = float32(1e10)
-	for i := output_order.size() - 1; i >= 0; i-- {
+	for i := len(output_order) - 1; i >= 0; i-- {
 		min_err = std_minFloat32(min_err, (*output_order)[i].block_err)
 		(*output_order)[i].block_err = min_err
 	}
@@ -509,11 +509,11 @@ func ComputeEntropyCodes(histograms []JpegHistogram) (int, []byte) {
 	clustered := make([]JpegHistogram, len(histograms))
 	copy(clustered, histograms) // TODO PATAPON is this intended as a copy?
 	num := len(histograms)
-	indexes := make([]int, histograms.size())
-	clustered_depths := make([]byte, histograms.size()*kSize)
+	indexes := make([]int, len(histograms))
+	clustered_depths := make([]byte, len(histograms)*kSize)
 	ClusterHistograms(&clustered[0], &num, &indexes[0], &clustered_depths[0])
 	depths := make([]byte, len(clustered_depths))
-	for i := 0; i < histograms.size(); i++ {
+	for i := 0; i < len(histograms); i++ {
 		copy(depths[i*kSize:(i+1)*kSize], clustered_depths[indexes[i]*kSize:])
 	}
 	var histogram_size int
@@ -548,7 +548,7 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 	height := img.height()
 	ncomp := len(jpg.components)
 	last_c := Log2FloorNonZero(comp_mask)
-	if int(last_c) >= jpg.components.size() {
+	if int(last_c) >= len(jpg.components) {
 		return
 	}
 	factor_x := img.component(last_c).factor_x()
@@ -589,7 +589,7 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 		}
 	}
 	comparator_.FinishBlockComparisons()
-	candidate_coeff_offsets[num_blocks] = candidate_coeffs.size()
+	candidate_coeff_offsets[num_blocks] = len(candidate_coeffs)
 
 	ac_histograms := make([]JpegHistogram, ncomp)
 	var jpg_header_size, dc_size int
@@ -613,7 +613,7 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 	for direction := range []int{1, -1} {
 		for {
 			if stop_early && direction == -1 {
-				if prev_size > 1.01*final_output_.jpeg_data.size() {
+				if prev_size > 1.01*len(final_output_.jpeg_data) {
 					// If we are down-adjusting the error, the output size will only keep
 					// increasing.
 					// TODO(user): Do this check always by comparing only the size
@@ -711,7 +711,7 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 			val_threshold := float32(0.0)
 			changed_coeffs := 0
 			est_jpg_size := prev_size
-			for i := 0; i < global_order.size(); i++ {
+			for i := 0; i < len(global_order); i++ {
 				block_ix := global_order[i].first
 				block_x := block_ix % block_width
 				block_y := block_ix / block_width
@@ -835,14 +835,14 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 	var encoded_jpg string
 	OutputJpeg(jpg_in, &encoded_jpg)
 	final_output_.score = -1
-	GUETZLI_LOG(stats, "Original Out[%7zd]", encoded_jpg.size())
+	GUETZLI_LOG(stats, "Original Out[%7zd]", len(encoded_jpg))
 	if comparator_ == nullptr {
 		GUETZLI_LOG(stats, " <image too small for Butteraugli>\n")
 		final_output_.jpeg_data = encoded_jpg
 		final_output_.distmap =
 			[]float(jpg_in.width*jpg_in.height, 0.0)
 		final_output_.distmap_aggregate = 0
-		final_output_.score = encoded_jpg.size()
+		final_output_.score = len(encoded_jpg)
 		// Butteraugli doesn't work with images this small.
 		return true
 	}
