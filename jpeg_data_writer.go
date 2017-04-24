@@ -1,17 +1,29 @@
 package guetzli_patapon
 
+import (
+	"bytes"
+	"io"
+)
+
 // Function pointer type used to write len bytes into buf. Returns the
 // number of bytes written or -1 on error.
-type JPEGOutputHook func(data interface{}, buf []byte) int
+// type JPEGOutputHook func(data interface{}, buf []byte) int
+// type JPEGOutputHook func(data []byte, buf []byte) int
+type JPEGOutputHook io.Writer
 
 // Output callback function with associated data.
 type JPEGOutput struct {
 	cb   JPEGOutputHook
-	data interface{}
+	data bytes.Buffer
 }
 
 func (out *JPEGOutput) Write(buf []byte) bool {
-	return len(buf) == 0 || out.cb(out.data, buf) == len(buf)
+	if len(buf) == 0 {
+		return true
+	}
+	// err, n := out.cb.Write(&out.data, buf)
+	n, err := out.cb.Write(buf)
+	return err == nil && n == len(buf)
 }
 
 type HuffmanCodeTable struct {

@@ -100,20 +100,20 @@ func CheckJpegSanity(jpg *JPEGData) bool {
 }
 
 /*  ??? TODO PATAPON
-func GuetzliStringOut(data []byte, buf []byte, count int) int {
-  sink := string(data);
-  sink.append(reinterpret_cast<const char*>(buf), count);
-  return count;
+ */
+func GuetzliStringOut(data []byte, buf []byte) int {
+	sink := string(data)
+	sink.append(buf)
+	return len(buf)
 }
 
-func (p *Processor)  OutputJpeg(jpg *JPEGData, string* out) {
-  out.clear();
-  JPEGOutput output(GuetzliStringOut, out);
-  if !WriteJpeg(jpg, p.params_.clear_metadata, output) {
-    panic("ouch");
-  }
+func (p *Processor) OutputJpeg(jpg *JPEGData, out *string) {
+	out.clear()
+	output := JPEGOutput{cb: GuetzliStringOut, data: out}
+	if !WriteJpeg(jpg, p.params_.clear_metadata, output) {
+		panic("ouch")
+	}
 }
-*/
 
 func (p *Processor) MaybeOutput(encoded_jpg string) {
 	score := p.comparator_.ScoreOutputSize(len(encoded_jpg))

@@ -164,4 +164,4 @@ var (
 	Log2Floor        func(uint32) int
 )
 
-func (*Processor) OutputJpeg(*JPEGData, *string) { panic("Not Yet Implemented") }
+// func (*Processor) OutputJpeg(*JPEGData, *string) { panic("Not Yet Implemented") }
