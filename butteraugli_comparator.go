@@ -53,7 +53,7 @@ func NewButteraugliComparator(width, height int,
 	return bc
 }
 
-func (bc *ButteraugliComparator) Compare(img OutputImage) {
+func (bc *ButteraugliComparator) Compare(img *OutputImage) {
 	rgb := [][]float32{
 		make([]float32, bc.width_*bc.height_),
 		make([]float32, bc.width_*bc.height_),
@@ -64,6 +64,18 @@ func (bc *ButteraugliComparator) Compare(img OutputImage) {
 	bc.distmap_ = bc.comparator_.DiffmapOpsinDynamicsImage(bc.rgb_linear_pregamma_, rgb)
 	bc.distance_ = float32(ButteraugliScoreFromDiffmap(bc.distmap_))
 	GUETZLI_LOG(bc.stats_, " BA[100.00%%] D[%6.4f]", bc.distance_)
+}
+
+func (bc *ButteraugliComparator) DistanceOK(target_mul float64) bool {
+	return bc.distance_ <= float32(target_mul)*bc.target_distance_
+}
+
+func (bc *ButteraugliComparator) distmap() []float32 {
+	return bc.distmap_
+}
+
+func (bc *ButteraugliComparator) distmap_aggregate() float32 {
+	return bc.distance_
 }
 
 func (bc *ButteraugliComparator) StartBlockComparisons() {
