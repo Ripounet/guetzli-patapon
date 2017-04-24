@@ -943,8 +943,9 @@ func FindNextMarker(data []byte, length, pos int) int {
 	return num_skipped
 }
 
-func ReadJpeg(data []byte, length int, mode JpegReadMode, jpg *JPEGData) bool {
+func ReadJpeg(data []byte, mode JpegReadMode, jpg *JPEGData) bool {
 	pos := 0
+	length := len(data)
 	// Check SOI marker.
 	EXPECT_MARKER(pos, length, data)
 	marker := data[pos+1]

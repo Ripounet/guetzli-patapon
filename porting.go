@@ -165,3 +165,5 @@ var (
 )
 
 func (*Processor) OutputJpeg(*JPEGData, *string) { panic("Not Yet Implemented") }
+func HasYCbCrColorSpace(jpg *JPEGData) bool      { panic("Not Yet Implemented") }
+func DecodeJpegToRGB(jpg *JPEGData) []byte       { panic("Not Yet Implemented") }

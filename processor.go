@@ -2,6 +2,7 @@ package guetzli_patapon
 
 import (
 	"log"
+	"math"
 	"sort"
 )
 
@@ -275,7 +276,7 @@ func (qmg *QuantMatrixGenerator) GetNext(q [][kDCTBlockSize]int) bool {
 }
 
 func (qmg *QuantMatrixGenerator) Add(data *QuantData) {
-	qmg.quants_ = append(qmg.quants_, data)
+	qmg.quants_ = append(qmg.quants_, *data)
 	hscore := QuantMatrixHeuristicScore(data.q[:])
 	if data.dist_ok {
 		qmg.hscore_a_ = std_maxFloat64(qmg.hscore_a_, hscore)
@@ -396,7 +397,7 @@ func (p *Processor) ComputeBlockZeroingOrder(
 	kWeight := [3]float64{1.0, 0.22, 0.20}
 	var input_order pairs
 	for c := 0; c < 3; c++ {
-		if !(comp_mask & (1 << c)) {
+		if (comp_mask & (1 << uint(c))) == 0 {
 			continue
 		}
 		for k := 1; k < kDCTBlockSize; k++ {
@@ -404,10 +405,12 @@ func (p *Processor) ComputeBlockZeroingOrder(
 			if block[idx] != 0 {
 				var score float32
 				if p.params_.new_zeroing_model {
-					score = std_abs(orig_block[idx])*csf[idx] + bias[idx]
+					score = float32(std_abs(int(orig_block[idx])))*csf[idx] + bias[idx]
 				} else {
-					score = float32((std_abs(orig_block[idx]) - kJPEGZigZagOrder[k]/64.0) *
-						kWeight[c] / oldCsf[k])
+					score = float32(
+						(math.Abs(float64(orig_block[idx])) - float64(kJPEGZigZagOrder[k])/64.0) *
+							kWeight[c] /
+							float64(oldCsf[k]))
 				}
 				input_order = append(input_order, pair{idx, score})
 			}
@@ -415,30 +418,30 @@ func (p *Processor) ComputeBlockZeroingOrder(
 	}
 	sort.Sort(input_order)
 	var processed_block [kBlockSize]coeff_t
-	copy(processed_block, block)
-	comparator_.SwitchBlock(block_x, block_y, factor_x, factor_y)
+	copy(processed_block[:], block)
+	p.comparator_.SwitchBlock(block_x, block_y, factor_x, factor_y)
 	for len(input_order) > 0 {
 		best_err := float32(1e17)
 		best_i := 0
-		for i := 0; i < std_min(params_.zeroing_greedy_lookahead, len(input_order)); i++ {
+		for i := 0; i < std_min(p.params_.zeroing_greedy_lookahead, len(input_order)); i++ {
 			var candidate_block [kBlockSize]coeff_t
-			copy(candidate_block, processed_block)
-			idx := input_order[i].first
+			copy(candidate_block[:], processed_block[:])
+			idx := input_order[i].i
 			candidate_block[idx] = 0
 			for c := 0; c < 3; c++ {
-				if comp_mask & (1 << c) {
+				if comp_mask&(1<<uint(c)) != 0 {
 					img.component(c).SetCoeffBlock(
-						block_x, block_y, &candidate_block[c*kDCTBlockSize])
+						block_x, block_y, candidate_block[c*kDCTBlockSize:])
 				}
 			}
-			max_err = float32(0)
+			max_err := float32(0)
 			for iy := 0; iy < factor_y; iy++ {
 				for ix := 0; ix < factor_x; ix++ {
 					block_xx := block_x*factor_x + ix
 					block_yy := block_y*factor_y + iy
 					if 8*block_xx < img.width() && 8*block_yy < img.height() {
-						err := float32(comparator_.CompareBlock(*img, ix, iy))
-						max_err = std_maxFloa32(max_err, err)
+						err := float32(p.comparator_.CompareBlock(img, ix, iy))
+						max_err = std_maxFloat32(max_err, err)
 					}
 				}
 			}
@@ -447,36 +450,37 @@ func (p *Processor) ComputeBlockZeroingOrder(
 				best_i = i
 			}
 		}
-		idx := input_order[best_i].first
+		idx := input_order[best_i].i
 		processed_block[idx] = 0
-		input_order.erase(input_order.begin() + best_i)
-		output_order = append(output_order, pair{idx, best_err})
+		input_order = input_order[best_i:]
+		output_order = append(output_order, CoeffData{idx, best_err})
 		for c := 0; c < 3; c++ {
-			if comp_mask & (1 << c) {
+			if comp_mask&(1<<uint(c)) != 0 {
 				img.component(c).SetCoeffBlock(
-					block_x, block_y, &processed_block[c*kDCTBlockSize])
+					block_x, block_y, processed_block[c*kDCTBlockSize:])
 			}
 		}
 	}
 	// Make the block error values monotonic.
-	min_err = float32(1e10)
+	min_err := float32(1e10)
 	for i := len(output_order) - 1; i >= 0; i-- {
-		min_err = std_minFloat32(min_err, (*output_order)[i].block_err)
-		(*output_order)[i].block_err = min_err
+		min_err = std_minFloat32(min_err, output_order[i].block_err)
+		output_order[i].block_err = min_err
 	}
 	// Cut off at the block error limit.
 	num := 0
-	for num < len(output_order) && output_order[num].block_err <= comparator_.BlockErrorLimit() {
+	for num < len(output_order) && output_order[num].block_err <= p.comparator_.BlockErrorLimit() {
 		num++
 	}
-	output_order.resize(num)
+	output_order = output_order[:num]
 	// Restore *img to the same state as it was at the start of this function.
 	for c := 0; c < 3; c++ {
-		if comp_mask & (1 << c) {
+		if comp_mask&(1<<uint(c)) != 0 {
 			img.component(c).SetCoeffBlock(
-				block_x, block_y, &block[c*kDCTBlockSize])
+				block_x, block_y, block[c*kDCTBlockSize:])
 		}
 	}
+	return
 }
 
 func UpdateACHistogram(weight int,
@@ -492,16 +496,16 @@ func UpdateACHistogram(weight int,
 			continue
 		}
 		for r > 15 {
-			ac_histogram.Add(0xf0, weight)
+			ac_histogram.AddW(0xf0, weight)
 			r -= 16
 		}
-		nbits := Log2FloorNonZero(std_abs(coeff/q[k_nat])) + 1
+		nbits := Log2FloorNonZero(uint32(std_abs(int(coeff)/q[k_nat]))) + 1
 		symbol := (r << 4) + nbits
-		ac_histogram.Add(symbol, weight)
+		ac_histogram.AddW(symbol, weight)
 		r = 0
 	}
 	if r > 0 {
-		ac_histogram.Add(0, weight)
+		ac_histogram.AddW(0, weight)
 	}
 }
 
@@ -511,43 +515,42 @@ func ComputeEntropyCodes(histograms []JpegHistogram) (int, []byte) {
 	num := len(histograms)
 	indexes := make([]int, len(histograms))
 	clustered_depths := make([]byte, len(histograms)*kSize)
-	ClusterHistograms(&clustered[0], &num, &indexes[0], &clustered_depths[0])
+	ClusterHistograms(clustered, &num, indexes, clustered_depths)
 	depths := make([]byte, len(clustered_depths))
 	for i := 0; i < len(histograms); i++ {
 		copy(depths[i*kSize:(i+1)*kSize], clustered_depths[indexes[i]*kSize:])
 	}
 	var histogram_size int
 	for i := 0; i < num; i++ {
-		histogram_size += HistogramHeaderCost(clustered[i]) / 8
+		histogram_size += HistogramHeaderCost(&clustered[i]) / 8
 	}
-	return histogram_size
+	return histogram_size, depths
 }
 
 func EntropyCodedDataSize(histograms []JpegHistogram, depths []byte) int {
 	numbits := 0
 	for i := 0; i < len(histograms); i++ {
-		numbits += HistogramEntropyCost(histograms[i], depths[i*kSize:])
+		numbits += HistogramEntropyCost(&histograms[i], depths[i*kSize:])
 	}
 	return (numbits + 7) / 8
 }
 
 func EstimateDCSize(jpg *JPEGData) int {
-	histograms := make([]JpegHistogram, len(jpg.components))
-	BuildDCHistograms(jpg, histograms)
+	histograms := BuildDCHistograms(jpg)
 	num := len(histograms)
 	indexes := make([]int, num)
 	depths := make([]byte, num*kSize)
 	return ClusterHistograms(histograms, &num, indexes, depths)
 }
 
-func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
+func (p *Processor) SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 	comp_mask byte,
 	target_mul float64,
 	stop_early bool) {
 	width := img.width()
 	height := img.height()
 	ncomp := len(jpg.components)
-	last_c := Log2FloorNonZero(comp_mask)
+	last_c := Log2FloorNonZero(uint32(comp_mask))
 	if int(last_c) >= len(jpg.components) {
 		return
 	}
@@ -561,34 +564,31 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 	candidate_coeffs := make([]byte, 0, 60*num_blocks)
 	candidate_coeff_errors := make([]float32, 0, 60*num_blocks)
 	block_order := make([]CoeffData, 3*kDCTBlockSize)
-	comparator_.StartBlockComparisons()
+	p.comparator_.StartBlockComparisons()
 	for block_y, block_ix := 0, 0; block_y < block_height; block_y++ {
 		for block_x := 0; block_x < block_width; block_x, block_ix = block_x+1, block_ix+1 {
 			var block [kBlockSize]coeff_t
 			var orig_block [kBlockSize]coeff_t
 			for c := 0; c < 3; c++ {
-				if comp_mask & (1 << c) {
+				if comp_mask&(1<<uint(c)) != 0 {
 					assert(img.component(c).factor_x() == factor_x)
 					assert(img.component(c).factor_y() == factor_y)
-					img.component(c).GetCoeffBlock(block_x, block_y,
-						&block[c*kDCTBlockSize])
+					img.component(c).GetCoeffBlock(block_x, block_y, block[c*kDCTBlockSize:])
 					comp := jpg.components[c]
 					jpg_block_ix := block_y*comp.width_in_blocks + block_x
 					copy(orig_block[c*kDCTBlockSize:(c+1)*kDCTBlockSize],
 						comp.coeffs[jpg_block_ix*kDCTBlockSize:])
 				}
 			}
-			block_order.clear()
-			ComputeBlockZeroingOrder(block, orig_block, block_x, block_y, factor_x,
-				factor_y, comp_mask, img, &block_order)
+			block_order = p.ComputeBlockZeroingOrder(block[:], orig_block[:], block_x, block_y, factor_x, factor_y, comp_mask, img)
 			candidate_coeff_offsets[block_ix] = len(candidate_coeffs)
 			for i := 0; i < len(block_order); i++ {
-				candidate_coeffs = append(candidate_coeffs, block_order[i].idx)
+				candidate_coeffs = append(candidate_coeffs, byte(block_order[i].idx))
 				candidate_coeff_errors = append(candidate_coeff_errors, block_order[i].block_err)
 			}
 		}
 	}
-	comparator_.FinishBlockComparisons()
+	p.comparator_.FinishBlockComparisons()
 	candidate_coeff_offsets[num_blocks] = len(candidate_coeffs)
 
 	ac_histograms := make([]JpegHistogram, ncomp)
@@ -596,12 +596,11 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 	{
 		jpg_out := *jpg
 		img.SaveToJpegData(&jpg_out)
-		jpg_header_size = JpegHeaderSize(jpg_out, params_.clear_metadata)
-		dc_size = EstimateDCSize(jpg_out)
-		BuildACHistograms(jpg_out, &ac_histograms[0])
+		jpg_header_size = JpegHeaderSize(&jpg_out, p.params_.clear_metadata)
+		dc_size = EstimateDCSize(&jpg_out)
+		BuildACHistograms(&jpg_out, ac_histograms)
 	}
-	var ac_depths []byte
-	ac_histogram_size := ComputeEntropyCodes(ac_histograms, &ac_depths)
+	ac_histogram_size, ac_depths := ComputeEntropyCodes(ac_histograms)
 	base_size := jpg_header_size + dc_size + ac_histogram_size +
 		EntropyCodedDataSize(ac_histograms, ac_depths)
 	prev_size := base_size
@@ -613,7 +612,7 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 	for direction := range []int{1, -1} {
 		for {
 			if stop_early && direction == -1 {
-				if prev_size > 1.01*len(final_output_.jpeg_data) {
+				if 100*prev_size > 101*len(p.final_output_.jpeg_data) {
 					// If we are down-adjusting the error, the output size will only keep
 					// increasing.
 					// TODO(user): Do this check always by comparing only the size
@@ -625,14 +624,13 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 			var blocks_to_change int
 			var block_weight []float32
 			for rblock := 1; rblock <= 4; rblock++ {
-				block_weight = []float(num_blocks)
+				block_weight = make([]float32, num_blocks)
 				distmap := make([]float32, width*height)
 				if !first_up_iter {
-					distmap = comparator_.distmap()
+					distmap = p.comparator_.distmap()
 				}
-				comparator_.ComputeBlockErrorAdjustmentWeights(
-					direction, rblock, target_mul, factor_x, factor_y, distmap,
-					&block_weight)
+				p.comparator_.ComputeBlockErrorAdjustmentWeights(
+					direction, rblock, target_mul, factor_x, factor_y, distmap, block_weight)
 				global_order = nil
 				blocks_to_change = 0
 				for block_y, block_ix := 0, 0; block_y < block_height; block_y++ {
@@ -640,7 +638,7 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 						last_index := last_indexes[block_ix]
 						offset := candidate_coeff_offsets[block_ix]
 						num_candidates := candidate_coeff_offsets[block_ix+1] - offset
-						float * candidate_errors = &candidate_coeff_errors[offset]
+						candidate_errors := candidate_coeff_errors[offset:]
 						max_err := max_block_error[block_ix]
 						if block_weight[block_ix] == 0 {
 							continue
@@ -651,9 +649,8 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 									block_weight[block_ix])
 								global_order = append(global_order, pair{block_ix, val})
 							}
-							blocks_to_change := 0
 							if last_index < num_candidates {
-								blocks_to_change = 1
+								blocks_to_change++
 							}
 						} else {
 							for i := last_index - 1; i >= 0; i-- {
@@ -661,21 +658,20 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 									block_weight[block_ix])
 								global_order = append(global_order, pair{block_ix, val})
 							}
-							blocks_to_change := 0
 							if last_index > 0 {
-								blocks_to_change = 1
+								blocks_to_change++
 							}
 						}
 					}
 				}
-				if !global_order.empty() {
+				if len(global_order) > 0 {
 					// If we found something to adjust with the current block adjustment
 					// radius, we can stop and adjust the blocks we have.
 					break
 				}
 			}
 
-			if global_order.empty() {
+			if len(global_order) > 0 {
 				break
 			}
 
@@ -685,25 +681,25 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 			if direction > 0 {
 				rel_size_delta = 0.01
 			}
-			if direction > 0 && comparator_.DistanceOK(1.0) {
+			if direction > 0 && p.comparator_.DistanceOK(1.0) {
 				rel_size_delta = 0.05
 			}
-			min_size_delta := base_size * rel_size_delta
+			min_size_delta := float64(base_size) * rel_size_delta
 
 			var coeffs_to_change_per_block float32
 			if direction > 0 {
 				coeffs_to_change_per_block = 2.0
 			} else {
-				coeffs_to_change_per_block = factor_x * factor_y * 0.2
+				coeffs_to_change_per_block = float32(factor_x*factor_y) * 0.2
 			}
-			min_coeffs_to_change := coeffs_to_change_per_block * blocks_to_change
+			min_coeffs_to_change := coeffs_to_change_per_block * float32(blocks_to_change)
 
 			if first_up_iter {
-				limit = float32(0.75 * comparator_.BlockErrorLimit())
+				limit := float32(0.75 * p.comparator_.BlockErrorLimit())
 				it := sort.Search(len(global_order), func(i int) bool {
 					return global_order[i].f >= limit
 				})
-				min_coeffs_to_change = std_max(min_coeffs_to_change, it)
+				min_coeffs_to_change = std_maxFloat32(min_coeffs_to_change, float32(it))
 				first_up_iter = false
 			}
 
@@ -712,61 +708,61 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 			changed_coeffs := 0
 			est_jpg_size := prev_size
 			for i := 0; i < len(global_order); i++ {
-				block_ix := global_order[i].first
+				block_ix := global_order[i].i
 				block_x := block_ix % block_width
 				block_y := block_ix / block_width
 				last_idx := last_indexes[block_ix]
 				offset := candidate_coeff_offsets[block_ix]
-				byte * candidates = &candidate_coeffs[offset]
+				candidates := candidate_coeffs[offset:]
 				idx := candidates[last_idx+std_min(direction, 0)]
 				c := idx / kDCTBlockSize
 				k := idx % kDCTBlockSize
-				int * quant = img.component(c).quant()
-				JPEGComponent & comp = jpg.components[c]
+				quant := img.component(int(c)).quant()
+				comp := &jpg.components[c]
 				jpg_block_ix := block_y*comp.width_in_blocks + block_x
 				newval := 0
 				if direction <= 0 {
-					newval = Quantize(comp.coeffs[jpg_block_ix*kDCTBlockSize+k], quant[k])
+					newval = int(Quantize(comp.coeffs[jpg_block_ix*kDCTBlockSize+int(k)], quant[k]))
 				}
 				var block [kDCTBlockSize]coeff_t
-				img.component(c).GetCoeffBlock(block_x, block_y, block)
-				UpdateACHistogram(-1, block, quant, &ac_histograms[c])
-				block[k] = newval
-				UpdateACHistogram(1, block, quant, &ac_histograms[c])
-				img.component(c).SetCoeffBlock(block_x, block_y, block)
+				img.component(int(c)).GetCoeffBlock(block_x, block_y, block[:])
+				UpdateACHistogram(-1, block[:], quant, &ac_histograms[c])
+				block[k] = coeff_t(newval)
+				UpdateACHistogram(1, block[:], quant, &ac_histograms[c])
+				img.component(int(c)).SetCoeffBlock(block_x, block_y, block[:])
 				last_indexes[block_ix] += direction
-				changed_blocks.insert(block_ix)
-				val_threshold = global_order[i].second
+				changed_blocks[block_ix] = true
+				val_threshold = global_order[i].f
 				changed_coeffs++
 				const kEntropyCodeUpdateFreq = 10
 				if i%kEntropyCodeUpdateFreq == 0 {
-					ac_histogram_size = ComputeEntropyCodes(ac_histograms, &ac_depths)
+					ac_histogram_size, ac_depths = ComputeEntropyCodes(ac_histograms)
 				}
 				est_jpg_size = jpg_header_size + dc_size + ac_histogram_size +
 					EntropyCodedDataSize(ac_histograms, ac_depths)
-				if changed_coeffs > min_coeffs_to_change &&
-					std_abs(est_jpg_size-prev_size) > min_size_delta {
+				if float32(changed_coeffs) > min_coeffs_to_change &&
+					math.Abs(float64(est_jpg_size-prev_size)) > min_size_delta {
 					break
 				}
 			}
-			global_order_size = len(global_order)
+			// global_order_size := len(global_order)
 			global_order = nil
 
 			for i := 0; i < num_blocks; i++ {
-				max_block_error[i] += block_weight[i] * val_threshold * direction
+				max_block_error[i] += block_weight[i] * val_threshold * float32(direction)
 			}
 
-			stats_.counters[kNumItersCnt]++
+			p.stats_.counters[kNumItersCnt]++
 			if direction > 0 {
-				stats_.counters[kNumItersUpCnt]++
+				p.stats_.counters[kNumItersUpCnt]++
 			} else {
-				stats_.counters[kNumItersDownCnt]++
+				p.stats_.counters[kNumItersDownCnt]++
 			}
 			var encoded_jpg string
 			{
 				jpg_out := *jpg
 				img.SaveToJpegData(&jpg_out)
-				OutputJpeg(jpg_out, &encoded_jpg)
+				p.OutputJpeg(&jpg_out, &encoded_jpg)
 			}
 			// GUETZLI_LOG(stats_,
 			//             "Iter %2d: %s(%d) %s Coeffs[%d/%zd] "
@@ -777,8 +773,8 @@ func SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 			//             blocks_to_change, num_blocks, val_threshold,
 			//             encoded_jpg.size(),
 			//             100.0 - (100.0 * est_jpg_size) / encoded_jpg.size());
-			comparator_.Compare(*img)
-			MaybeOutput(encoded_jpg)
+			p.comparator_.Compare(img)
+			p.MaybeOutput(encoded_jpg)
 			prev_size = est_jpg_size
 		}
 	}
@@ -797,12 +793,12 @@ func IsGrayscale(jpg *JPEGData) bool {
 }
 
 func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
-	comparator *Comparator, out *GuetzliOutput,
+	comparator Comparator, out *GuetzliOutput,
 	stats *ProcessStats) bool {
-	params_ = params
-	comparator_ = comparator
-	final_output_ = out
-	stats_ = stats
+	p.params_ = *params
+	p.comparator_ = comparator
+	p.final_output_ = out
+	p.stats_ = stats
 
 	if params.butteraugli_target > 2.0 {
 		log.Println("Guetzli should be called with quality >= 84, otherwise the\n",
@@ -833,65 +829,64 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 	// Output the original image, in case we do not manage to create anything
 	// with a good enough quality.
 	var encoded_jpg string
-	OutputJpeg(jpg_in, &encoded_jpg)
-	final_output_.score = -1
+	p.OutputJpeg(jpg_in, &encoded_jpg)
+	p.final_output_.score = -1
 	GUETZLI_LOG(stats, "Original Out[%7zd]", len(encoded_jpg))
-	if comparator_ == nullptr {
+	if p.comparator_ == nil {
 		GUETZLI_LOG(stats, " <image too small for Butteraugli>\n")
-		final_output_.jpeg_data = encoded_jpg
-		final_output_.distmap =
-			[]float(jpg_in.width*jpg_in.height, 0.0)
-		final_output_.distmap_aggregate = 0
-		final_output_.score = len(encoded_jpg)
+		p.final_output_.jpeg_data = encoded_jpg
+		p.final_output_.distmap = make([]float32, jpg_in.width*jpg_in.height)
+		p.final_output_.distmap_aggregate = 0
+		p.final_output_.score = float64(len(encoded_jpg))
 		// Butteraugli doesn't work with images this small.
 		return true
 	}
 	{
 		jpg := *jpg_in
-		RemoveOriginalQuantization(&jpg, q_in)
-		img := MakeOutputImage(jpg.width, jpg.height)
-		img.CopyFromJpegData(jpg)
-		comparator_.Compare(img)
+		RemoveOriginalQuantization(&jpg, q_in[:])
+		img := OutputImage{width_: jpg.width, height_: jpg.height}
+		img.CopyFromJpegData(&jpg)
+		p.comparator_.Compare(&img)
 	}
-	MaybeOutput(encoded_jpg)
+	p.MaybeOutput(encoded_jpg)
 	try_420 := 0
-	if input_is_420 || params_.force_420 || (params_.try_420 && !IsGrayscale(jpg_in)) {
+	if input_is_420 || p.params_.force_420 || (p.params_.try_420 && !IsGrayscale(jpg_in)) {
 		try_420 = 1
 	}
 	force_420 := 0
-	if input_is_420 || params_.force_420 {
+	if input_is_420 || p.params_.force_420 {
 		force_420 = 1
 	}
 	for downsample := force_420; downsample <= try_420; downsample++ {
 		jpg := *jpg_in
-		RemoveOriginalQuantization(&jpg, q_in)
-		img * OutputImage(jpg.width, jpg.height)
-		img.CopyFromJpegData(jpg)
-		if downsample {
-			DownsampleImage(&img)
+		RemoveOriginalQuantization(&jpg, q_in[:])
+		img := OutputImage{width_: jpg.width, height_: jpg.height}
+		img.CopyFromJpegData(&jpg)
+		if downsample != 0 {
+			p.DownsampleImage(&img)
 			img.SaveToJpegData(&jpg)
 		}
 		var best_q [3][kDCTBlockSize]int
-		memcpy(best_q, q_in, sizeof(best_q))
-		if !SelectQuantMatrix(jpg, downsample != 0, best_q, &img) {
+		copy(best_q[:], q_in[:])
+		if !p.SelectQuantMatrix(&jpg, downsample != 0, best_q[:], &img) {
 			for c := 0; c < 3; c++ {
 				for i := 0; i < kDCTBlockSize; i++ {
 					best_q[c][i] = 1
 				}
 			}
 		}
-		img.CopyFromJpegData(jpg)
-		img.ApplyGlobalQuantization(best_q)
+		img.CopyFromJpegData(&jpg)
+		img.ApplyGlobalQuantization(best_q[:])
 
-		if !downsample {
-			SelectFrequencyMasking(jpg, &img, 7, 1.0, false)
+		if downsample == 0 {
+			p.SelectFrequencyMasking(&jpg, &img, 7, 1.0, false)
 		} else {
 			ymul := 0.97
 			if len(jpg.components) == 1 {
 				ymul = 1.0
 			}
-			SelectFrequencyMasking(jpg, &img, 1, ymul, false)
-			SelectFrequencyMasking(jpg, &img, 6, 1.0, true)
+			p.SelectFrequencyMasking(&jpg, &img, 1, ymul, false)
+			p.SelectFrequencyMasking(&jpg, &img, 6, 1.0, true)
 		}
 	}
 
@@ -899,7 +894,7 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 }
 
 func ProcessJpegData(params *Params, jpg_in *JPEGData,
-	comparator *Comparator, out *GuetzliOutput,
+	comparator Comparator, out *GuetzliOutput,
 	stats *ProcessStats) bool {
 	var processor Processor
 	return processor.ProcessJpegData(params, jpg_in, comparator, out, stats)
@@ -909,29 +904,29 @@ func Process_(params *Params, stats *ProcessStats, data []byte) (ok bool, jpg_ou
 	var jpg JPEGData
 	if !ReadJpeg(data, JPEG_READ_ALL, &jpg) {
 		log.Printf("Can't read jpg data from input file\n")
-		return false
+		return false, ""
 	}
-	if !CheckJpegSanity(jpg) {
+	if !CheckJpegSanity(&jpg) {
 		log.Printf("Unsupported input JPEG (unexpectedly large coefficient values).\n")
-		return false
+		return false, ""
 	}
-	rgb += DecodeJpegToRGB(jpg)
-	if rgb.empty() {
+	rgb := DecodeJpegToRGB(&jpg)
+	if len(rgb) == 0 {
 		log.Printf("Unsupported input JPEG file (e.g. unsupported " +
 			"downsampling mode).\nPlease provide the input image as " +
 			"a PNG file.\n")
-		return false
+		return false, ""
 	}
 	var out GuetzliOutput
 	var dummy_stats ProcessStats
-	if stats == nullptr {
+	if stats == nil {
 		stats = &dummy_stats
 	}
-	var comparator ButteraugliComparator
+	var comparator *ButteraugliComparator
 	if jpg.width >= 32 && jpg.height >= 32 {
-		comparator.reset(NewButteraugliComparator(jpg.width, jpg.height, &rgb, params.butteraugli_target, stats))
+		comparator = NewButteraugliComparator(jpg.width, jpg.height, rgb, params.butteraugli_target, stats)
 	}
-	ok = ProcessJpegData(params, jpg, comparator.get(), &out, stats)
+	ok = ProcessJpegData(params, &jpg, comparator, &out, stats)
 	jpg_out = out.jpeg_data
 	return ok, jpg_out
 }
@@ -940,18 +935,18 @@ func Process__(params *Params, stats *ProcessStats, rgb []byte, w, h int) (ok bo
 	var jpg JPEGData
 	if !EncodeRGBToJpeg(rgb, w, h, &jpg) {
 		log.Printf("Could not create jpg data from rgb pixels\n")
-		return false
+		return false, ""
 	}
 	var out GuetzliOutput
 	var dummy_stats ProcessStats
-	if stats == nullptr {
+	if stats == nil {
 		stats = &dummy_stats
 	}
-	var comparator ButteraugliComparator
+	var comparator *ButteraugliComparator
 	if jpg.width >= 32 && jpg.height >= 32 {
-		comparator.reset(NewButteraugliComparator(jpg.width, jpg.height, rgb, params.butteraugli_target, stats))
+		comparator = NewButteraugliComparator(jpg.width, jpg.height, rgb, params.butteraugli_target, stats)
 	}
-	ok = ProcessJpegData(params, jpg, comparator.get(), out, stats)
+	ok = ProcessJpegData(params, &jpg, comparator, &out, stats)
 	jpg_out = out.jpeg_data
 	return ok, jpg_out
 }
