@@ -288,6 +288,10 @@ func HistogramEntropyCost(histo *JpegHistogram, depths []byte) int {
 
 func BuildDCHistograms(jpg *JPEGData) (histo []JpegHistogram) {
 	histo = make([]JpegHistogram, len(jpg.components))
+	for i := range histo {
+		histo[i].Clear()
+	}
+
 	for i := 0; i < len(jpg.components); i++ {
 		c := &jpg.components[i]
 		dc_histogram := &histo[i]
@@ -370,17 +374,17 @@ func ClusterHistograms(histo []JpegHistogram, num *int, histo_indexes []int, dep
 	for *num > 1 {
 		last := *num - 1
 		second_last := *num - 2
-		combined := NewJpegHistogram(histo[last])
+		combined := histo[last] // this is a copy
 		combined.AddHistogram(&histo[second_last])
 		tree := make([]HuffmanTree, 2*JpegHistogram_kSize+1)
 		var depth_combined [JpegHistogram_kSize]byte
 		CreateHuffmanTree(combined.counts[:], JpegHistogram_kSize,
 			kJpegHuffmanMaxBitLength, tree, depth_combined[:])
-		cost_combined := (HistogramHeaderCost(combined) +
-			HistogramEntropyCost(combined, depth_combined[:]))
+		cost_combined := (HistogramHeaderCost(&combined) +
+			HistogramEntropyCost(&combined, depth_combined[:]))
 		if cost_combined < costs[last]+costs[second_last] {
-			histo[second_last] = *combined
-			histo[last] = JpegHistogram{} // TODO PATAPON initialize?
+			histo[second_last] = combined
+			histo[last].Clear()
 			costs[second_last] = cost_combined
 			copy(depth[second_last*JpegHistogram_kSize:], depth_combined[:])
 			for i := 0; i < orig_num; i++ {
@@ -429,8 +433,15 @@ func BuildAndEncodeHuffmanCodes(jpg *JPEGData, out JPEGOutput) (ok bool, dc_huff
 	ClusterHistograms(histograms, &num_dc_histo, dc_histo_indexes[:], depths[:])
 
 	// Build separate AC histograms for each component.
-	histograms.resize(num_dc_histo + ncomps)
-	depths.resize((num_dc_histo + ncomps) * JpegHistogram_kSize)
+	// histograms.resize(num_dc_histo + ncomps)
+	for len(histograms) < num_dc_histo+ncomps {
+		h := NewJpegHistogram()
+		histograms = append(histograms, *h)
+	}
+	// depths.resize((num_dc_histo + ncomps) * JpegHistogram_kSize)
+	for len(depths) < num_dc_histo+ncomps {
+		depths = append(depths, 0)
+	}
 	BuildACHistograms(jpg, histograms[num_dc_histo:])
 
 	// Cluster AC histograms.
@@ -440,7 +451,12 @@ func BuildAndEncodeHuffmanCodes(jpg *JPEGData, out JPEGOutput) (ok bool, dc_huff
 
 	// Compute DHT and SOS marker data sizes and start emitting DHT marker.
 	num_histo := num_dc_histo + num_ac_histo
-	histograms.resize(num_histo)
+	// histograms.resize(num_histo)
+	for len(histograms) <= num_histo {
+		h := NewJpegHistogram()
+		histograms = append(histograms, *h)
+	}
+	histograms = histograms[:num_histo]
 	total_count := 0
 	for i := 0; i < len(histograms); i++ {
 		total_count += histograms[i].NumSymbols()
@@ -615,11 +631,16 @@ func WriteJpeg(jpg *JPEGData, strip_metadata bool, out JPEGOutput) bool {
 	kSOIMarker := [2]byte{0xff, 0xd8}
 	kEOIMarker := [2]byte{0xff, 0xd9}
 	var dc_codes, ac_codes []HuffmanCodeTable
+	baehc := func() (ok bool) {
+		ok, dc_codes, ac_codes = BuildAndEncodeHuffmanCodes(jpg, out)
+		return ok
+	}
 	return (JPEGWrite(out, kSOIMarker[:]) &&
 		EncodeMetadata(jpg, strip_metadata, out) &&
 		EncodeDQT(jpg.quant, out) &&
 		EncodeSOF(jpg, out) &&
-		BuildAndEncodeHuffmanCodes(jpg, out, &dc_codes, &ac_codes) &&
+		// BuildAndEncodeHuffmanCodes(jpg, out, &dc_codes, &ac_codes) &&
+		baehc() &&
 		EncodeScan(jpg, dc_codes, ac_codes, out) &&
 		JPEGWrite(out, kEOIMarker[:]) &&
 		(strip_metadata || JPEGWrite(out, []byte(jpg.tail_data))))
@@ -629,7 +650,7 @@ func NullOut(data interface{}, buf []byte) int {
 	return len(buf)
 }
 
-func BuildSequentialHuffmanCodes(jpg *JPEGData, dc_huffman_code_tables, ac_huffman_code_tables *[]HuffmanCodeTable) {
-	var out JPEGOutput
-	BuildAndEncodeHuffmanCodes(jpg, out, dc_huffman_code_tables, ac_huffman_code_tables)
-}
+// func BuildSequentialHuffmanCodes(jpg *JPEGData) (dc_huffman_code_tables, ac_huffman_code_tables *[]HuffmanCodeTable) {
+// 	var out JPEGOutput
+// 	return BuildAndEncodeHuffmanCodes(jpg, out)
+// }
