@@ -101,11 +101,11 @@ func CheckJpegSanity(jpg *JPEGData) bool {
 }
 
 func (p *Processor) OutputJpeg(jpg *JPEGData) []byte {
-	out := NewJPEGOutput()
-	if !WriteJpeg(jpg, p.params_.clear_metadata, *out) {
+	var out bytes.Buffer
+	if !WriteJpeg(jpg, p.params_.clear_metadata, &out) {
 		panic("ouch")
 	}
-	return out.data.Bytes()
+	return out.Bytes()
 }
 
 func (p *Processor) MaybeOutput(encoded_jpg string) {
@@ -303,13 +303,13 @@ func (p *Processor) TryQuantMatrix(jpg_in *JPEGData,
 	copy(data.q[:], q)
 	img.CopyFromJpegData(jpg_in)
 	img.ApplyGlobalQuantization(data.q[:])
-	var buf bytes.Buffer
+	var buf []byte
 	{
 		jpg_out := *jpg_in
 		img.SaveToJpegData(&jpg_out)
-		p.OutputJpeg(&jpg_out, &buf)
+		buf = p.OutputJpeg(&jpg_out)
 	}
-	encoded_jpg := buf.String()
+	encoded_jpg := string(buf)
 	// GUETZLI_LOG(stats_, "Iter %2d: %s quantization matrix:\n",
 	//             stats_.counters[kNumItersCnt] + 1,
 	//             img.FrameTypeStr().c_str());
@@ -823,8 +823,7 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 	var q_in [3][kDCTBlockSize]int
 	// Output the original image, in case we do not manage to create anything
 	// with a good enough quality.
-	var encoded_jpg string
-	p.OutputJpeg(jpg_in, &encoded_jpg)
+	encoded_jpg := string(p.OutputJpeg(jpg_in))
 	p.final_output_.score = -1
 	GUETZLI_LOG(stats, "Original Out[%7zd]", len(encoded_jpg))
 	if p.comparator_ == nil {

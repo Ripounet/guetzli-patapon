@@ -1,37 +1,12 @@
 package guetzli_patapon
 
 import (
-	"bytes"
 	"io"
 	"io/ioutil"
+	"log"
 )
 
-// Function pointer type used to write len bytes into buf. Returns the
-// number of bytes written or -1 on error.
-// type JPEGOutputHook func(data interface{}, buf []byte) int
-// type JPEGOutputHook func(data []byte, buf []byte) int
-type JPEGOutputHook io.Writer
-
-// Output callback function with associated data.
-type JPEGOutput struct {
-	cb   JPEGOutputHook
-	data bytes.Buffer
-}
-
-func (out *JPEGOutput) Write(buf []byte) bool {
-	if len(buf) == 0 {
-		return true
-	}
-	n, err := out.cb.Write(buf)
-	return err == nil && n == len(buf)
-}
-
-func NewJPEGOutput() *JPEGOutput {
-	// By default, just write to internal buffer :)
-	out := new(JPEGOutput)
-	out.cb = &out.data
-	return out
-}
+type JPEGOutput io.Writer
 
 type HuffmanCodeTable struct {
 	depth [256]byte
@@ -89,15 +64,12 @@ const kJpegPrecision = 8
 
 // Writes len bytes from buf, using the out callback.
 func JPEGWrite(out JPEGOutput, buf []byte) bool {
-	const kBlockSize = 1 << 30
-	pos := 0
-	for len(buf)-pos > int(kBlockSize) {
-		if !out.Write(buf[pos : pos+kBlockSize]) {
-			return false
-		}
-		pos += kBlockSize
+	_, err := out.Write(buf)
+	if err != nil {
+		log.Println(err)
+		return false
 	}
-	return out.Write(buf[pos:])
+	return true
 }
 
 func EncodeMetadata(jpg *JPEGData, strip_metadata bool, out JPEGOutput) bool {
@@ -666,7 +638,7 @@ func WriteJpeg(jpg *JPEGData, strip_metadata bool, out JPEGOutput) bool {
 }
 
 func BuildSequentialHuffmanCodes(jpg *JPEGData) (dc_huffman_code_tables, ac_huffman_code_tables []HuffmanCodeTable) {
-	out := JPEGOutput{cb: ioutil.Discard}
+	out := ioutil.Discard
 	_, dc_huffman_code_tables, ac_huffman_code_tables = BuildAndEncodeHuffmanCodes(jpg, out)
 	return dc_huffman_code_tables, ac_huffman_code_tables
 }
