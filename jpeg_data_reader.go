@@ -24,7 +24,7 @@ func VERIFY_LEN(pos *int, n, length int) bool {
 
 func VERIFY_INPUT(var_, low, high int, code string) bool {
 	if var_ < low || var_ > high {
-		fprintf(stderr, "Invalid %s: %d\n", var_, int(var_))
+		fprintf(stderr, "Invalid %s: %d\n", code, int(var_))
 		// jpg.err = JPEG_INVALID_ //## code;
 		panic(code) // TODO PATAPON not panic?
 		return false
@@ -45,6 +45,7 @@ func VERIFY_MARKER_END(pos *int, start_pos, marker_len int) bool {
 }
 
 func EXPECT_MARKER(pos int, length int, data []byte) bool {
+	GUETZLI_LOG("EXPECT_MARKER", pos, length)
 	if pos+2 > length || data[pos] != 0xff {
 		found := byte(0)
 		if pos < length {
@@ -75,15 +76,15 @@ func DivCeil(a, b int) int {
 }
 
 func ReadUint8(data []byte, pos *int) int {
-	v := data[*pos]
+	v := int(data[*pos])
 	(*pos)++
-	return int(v)
+	return v
 }
 
 func ReadUint16(data []byte, pos *int) int {
-	v := (data[*pos] << 8) + data[*pos+1]
+	v := (int(data[*pos]) << 8) + int(data[*pos+1])
 	*pos += 2
-	return int(v)
+	return v
 }
 
 // Reads the Start of Frame (SOF) marker segment and fills in *jpg with the
@@ -360,7 +361,7 @@ func ProcessDQT(data []byte, length int, pos *int, jpg *JPEGData) bool {
 			VERIFY_LEN(pos, 1*kDCTBlockSize, length)
 		}
 
-		var table JPEGQuantTable
+		table := NewJPEGQuantTable()
 		table.index = quant_table_index
 		table.precision = quant_table_precision
 		for i := 0; i < kDCTBlockSize; i++ {
@@ -404,10 +405,9 @@ func ProcessAPP(data []byte, length int, pos *int,
 	marker_len := ReadUint16(data, pos)
 	VERIFY_INPUT(marker_len, 2, 65535, "MARKER_LEN")
 	VERIFY_LEN(pos, marker_len-2, length)
-	var app_str string
 	// Save the marker type together with the app data.
 	//std::string app_str(reinterpret_cast<const char*>(&data[*pos - 3]), marker_len + 1);
-	assert(false) // TODO above line
+	app_str := string(data[*pos-3 : *pos-3+marker_len+1])
 	*pos += marker_len - 2
 	jpg.app_data = append(jpg.app_data, app_str)
 	return true
@@ -927,6 +927,7 @@ func FixupIndexes(jpg *JPEGData) bool {
 
 func FindNextMarker(data []byte, length, pos int) int {
 	// kIsValidMarker[i] == 1 means (0xc0 + i) is a valid marker.
+	length_, pos_ := length, pos
 	kIsValidMarker := []uint8{
 		1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0,
@@ -936,10 +937,11 @@ func FindNextMarker(data []byte, length, pos int) int {
 	num_skipped := 0
 	for pos+1 < length &&
 		(data[pos] != 0xff || data[pos+1] < 0xc0 ||
-			kIsValidMarker[data[pos+1]-0xc0] != 0) {
+			kIsValidMarker[data[pos+1]-0xc0] == 0) {
 		pos++
 		num_skipped++
 	}
+	GUETZLI_LOG("FindNextMarker( data", length_, pos_, ") ==", num_skipped)
 	return num_skipped
 }
 
