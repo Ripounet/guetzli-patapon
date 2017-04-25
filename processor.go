@@ -1,6 +1,7 @@
 package guetzli_patapon
 
 import (
+	"bytes"
 	"log"
 	"math"
 	"sort"
@@ -99,20 +100,12 @@ func CheckJpegSanity(jpg *JPEGData) bool {
 	return true
 }
 
-/*  ??? TODO PATAPON
- */
-func GuetzliStringOut(data []byte, buf []byte) int {
-	sink := string(data)
-	sink.append(buf)
-	return len(buf)
-}
-
-func (p *Processor) OutputJpeg(jpg *JPEGData, out *string) {
-	out.clear()
-	output := JPEGOutput{cb: GuetzliStringOut, data: out}
-	if !WriteJpeg(jpg, p.params_.clear_metadata, output) {
+func (p *Processor) OutputJpeg(jpg *JPEGData) []byte {
+	out := NewJPEGOutput()
+	if !WriteJpeg(jpg, p.params_.clear_metadata, *out) {
 		panic("ouch")
 	}
+	return out.data.Bytes()
 }
 
 func (p *Processor) MaybeOutput(encoded_jpg string) {
@@ -310,12 +303,13 @@ func (p *Processor) TryQuantMatrix(jpg_in *JPEGData,
 	copy(data.q[:], q)
 	img.CopyFromJpegData(jpg_in)
 	img.ApplyGlobalQuantization(data.q[:])
-	var encoded_jpg string
+	var buf bytes.Buffer
 	{
 		jpg_out := *jpg_in
 		img.SaveToJpegData(&jpg_out)
-		p.OutputJpeg(&jpg_out, &encoded_jpg)
+		p.OutputJpeg(&jpg_out, &buf)
 	}
+	encoded_jpg := buf.String()
 	// GUETZLI_LOG(stats_, "Iter %2d: %s quantization matrix:\n",
 	//             stats_.counters[kNumItersCnt] + 1,
 	//             img.FrameTypeStr().c_str());
@@ -762,7 +756,8 @@ func (p *Processor) SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 			{
 				jpg_out := *jpg
 				img.SaveToJpegData(&jpg_out)
-				p.OutputJpeg(&jpg_out, &encoded_jpg)
+				encoded_jpg_bytes := p.OutputJpeg(&jpg_out)
+				encoded_jpg = string(encoded_jpg_bytes)
 			}
 			// GUETZLI_LOG(stats_,
 			//             "Iter %2d: %s(%d) %s Coeffs[%d/%zd] "

@@ -3,6 +3,7 @@ package guetzli_patapon
 import (
 	"bytes"
 	"io"
+	"io/ioutil"
 )
 
 // Function pointer type used to write len bytes into buf. Returns the
@@ -21,9 +22,15 @@ func (out *JPEGOutput) Write(buf []byte) bool {
 	if len(buf) == 0 {
 		return true
 	}
-	// err, n := out.cb.Write(&out.data, buf)
 	n, err := out.cb.Write(buf)
 	return err == nil && n == len(buf)
+}
+
+func NewJPEGOutput() *JPEGOutput {
+	// By default, just write to internal buffer :)
+	out := new(JPEGOutput)
+	out.cb = &out.data
+	return out
 }
 
 type HuffmanCodeTable struct {
@@ -658,11 +665,8 @@ func WriteJpeg(jpg *JPEGData, strip_metadata bool, out JPEGOutput) bool {
 		(strip_metadata || JPEGWrite(out, []byte(jpg.tail_data))))
 }
 
-func NullOut(data interface{}, buf []byte) int {
-	return len(buf)
+func BuildSequentialHuffmanCodes(jpg *JPEGData) (dc_huffman_code_tables, ac_huffman_code_tables []HuffmanCodeTable) {
+	out := JPEGOutput{cb: ioutil.Discard}
+	_, dc_huffman_code_tables, ac_huffman_code_tables = BuildAndEncodeHuffmanCodes(jpg, out)
+	return dc_huffman_code_tables, ac_huffman_code_tables
 }
-
-// func BuildSequentialHuffmanCodes(jpg *JPEGData) (dc_huffman_code_tables, ac_huffman_code_tables *[]HuffmanCodeTable) {
-// 	var out JPEGOutput
-// 	return BuildAndEncodeHuffmanCodes(jpg, out)
-// }
