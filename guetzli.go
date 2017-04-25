@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"image"
 	"io/ioutil"
 	"log"
 	"os"
+
+	// Register input formats
+	_ "image/jpeg"
+	_ "image/png"
 )
 
 const (
@@ -24,6 +29,107 @@ func BlendOnBlack(val, alpha byte) byte {
 	return byte((int(val)*int(alpha) + 128) / 255)
 }
 
+var (
+	flagVerbose    = flag.Bool("verbose", false, "Print a verbose trace of all attempts to standard output")
+	flagQuality    = flag.Int("quality", kDefaultJPEGQuality, "Visual quality to aim for, expressed as a JPEG quality value")
+	flagMemLimit   = flag.Int("memlimit", kDefaultMemlimitMB, "Memory limit in MB. Guetzli will fail if unable to stay under the limit")
+	flagNoMemLimit = flag.Bool("nomemlimit", false, "Do not limit memory usage")
+)
+
+func usage() {
+	fmt.Fprintln(os.Stderr,
+		"Guetzli JPEG compressor. Usage: \n",
+		"guetzli [flags] input_filename output_filename\n",
+		"\n",
+		"Flags:\n",
+		// "  --verbose    - Print a verbose trace of all attempts to standard output.\n"
+		// "  --quality Q  - Visual quality to aim for, expressed as a JPEG quality value.\n"
+		// "                 Default value is %d.\n"
+		// "  --memlimit M - Memory limit in MB. Guetzli will fail if unable to stay under\n"
+		// "                 the limit. Default limit is %d MB.\n"
+		// "  --nomemlimit - Do not limit memory usage.\n", kDefaultJPEGQuality, kDefaultMemlimitMB);
+	)
+	flag.PrintDefaults()
+	os.Exit(1)
+}
+
+func Main() {
+	flag.Usage = usage
+	flag.Parse()
+
+	if len(flag.Args()) != 2 {
+		usage()
+	}
+	inputFilename, outputFilename := flag.Arg(0), flag.Arg(1)
+
+	in_data := ReadFileOrDie(inputFilename)
+	var out_data []byte
+
+	var params Params
+	params.butteraugli_target = float32(ButteraugliScoreForQuality(float64(*flagQuality)))
+
+	var stats ProcessStats
+
+	if *flagVerbose {
+		stats.debug_output_file = os.Stderr
+	}
+
+	/*
+		kPNGMagicBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+		if len(in_data) >= 8 && bytes.Equal(in_data[:8], kPNGMagicBytes) {
+			var xsize, ysize int
+			var rgb []byte
+			var ok bool
+			if ok, xsize, ysize, rgb := ReadPNG(in_data); !ok {
+				log.Fatalln("Error reading PNG data from input file\n")
+			}
+			pixels := float64(xsize * ysize)
+			if memlimit_mb != -1 &&
+				(pixels*kBytesPerPixel/(1<<20) > memlimit_mb ||
+					memlimit_mb < kLowestMemusageMB) {
+				log.Fatalln("Memory limit would be exceeded. Failing.\n")
+			}
+			if !Process(params, &stats, rgb, xsize, ysize, &out_data) {
+				log.Fatalln("Guetzli processing failed\n")
+			}
+		} else {
+			var jpg_header JPEGData
+			if !ReadJpeg(in_data, JPEG_READ_HEADER, &jpg_header) {
+				log.Fatalln("Error reading JPG data from input file\n")
+			}
+			pixels := float64(jpg_header.width) * jpg_header.height
+			if memlimit_mb != -1 &&
+				(pixels*kBytesPerPixel/(1<<20) > memlimit_mb ||
+					memlimit_mb < kLowestMemusageMB) {
+				log.Fatalln("Memory limit would be exceeded. Failing.\n")
+			}
+			if !Process(params, &stats, in_data, &out_data) {
+				log.Fatalln("Guetzli processing failed\n")
+			}
+		}
+	*/
+	reader := bytes.NewBuffer(in_data)
+	_, format, err := image.DecodeConfig(reader)
+	if err != nil {
+		log.Fatalln("Decoding failed:", err)
+	}
+	switch format {
+	case "png":
+	case "jpeg":
+		var ok bool
+		var out_data_str string
+		if ok, out_data_str = Process(&params, &stats, in_data); !ok {
+			log.Fatalln("Guetzli processing failed\n")
+		}
+		out_data = []byte(out_data_str)
+	default:
+		log.Fatalln("Unexpected input format", format)
+	}
+
+	WriteFileOrDie(outputFilename, out_data)
+}
+
+/*
 func ReadPNG(data string) (ok bool, xsize, ysize int, rgb []byte) {
 	png_ptr := png_create_read_struct(PNG_LIBPNG_VER_STRING, nil, nil, nil)
 	if png_ptr == nil {
@@ -42,7 +148,7 @@ func ReadPNG(data string) (ok bool, xsize, ysize int, rgb []byte) {
 		png_destroy_read_struct(&png_ptr, &info_ptr, nil)
 		return
 	}
-	*/
+
 
 	panic("TODO")
 	/*
@@ -55,7 +161,7 @@ func ReadPNG(data string) (ok bool, xsize, ysize int, rgb []byte) {
 	    if (memstream.eof()) png_error(png_ptr, "unexpected end of data");
 	    if (memstream.fail()) png_error(png_ptr, "read from memory error");
 	  });
-	*/
+
 
 	// The png_transforms flags are as follows:
 	// packing == convert 1,2,4 bit images,
@@ -125,6 +231,7 @@ func ReadPNG(data string) (ok bool, xsize, ysize int, rgb []byte) {
 	ok = true
 	return
 }
+*/
 
 func ReadFileOrDie(filename string) []byte {
 	read_from_stdin := filename == "-"
@@ -154,89 +261,4 @@ func WriteFileOrDie(filename string, contents []byte) {
 	if err != nil {
 		log.Fatalln("Can't write:", err)
 	}
-}
-
-var (
-	flagVerbose    = flag.Bool("verbose", false, "Print a verbose trace of all attempts to standard output")
-	flagQuality    = flag.Int("quality", kDefaultJPEGQuality, "Visual quality to aim for, expressed as a JPEG quality value")
-	flagMemLimit   = flag.Int("memlimit", kDefaultMemlimitMB, "Memory limit in MB. Guetzli will fail if unable to stay under the limit")
-	flagNoMemLimit = flag.Bool("nomemlimit", false, "Do not limit memory usage")
-)
-
-func usage() {
-	fmt.Fprintln(os.Stderr,
-		"Guetzli JPEG compressor. Usage: \n",
-		"guetzli [flags] input_filename output_filename\n",
-		"\n",
-		"Flags:\n",
-		// "  --verbose    - Print a verbose trace of all attempts to standard output.\n"
-		// "  --quality Q  - Visual quality to aim for, expressed as a JPEG quality value.\n"
-		// "                 Default value is %d.\n"
-		// "  --memlimit M - Memory limit in MB. Guetzli will fail if unable to stay under\n"
-		// "                 the limit. Default limit is %d MB.\n"
-		// "  --nomemlimit - Do not limit memory usage.\n", kDefaultJPEGQuality, kDefaultMemlimitMB);
-	)
-	flag.PrintDefaults()
-	os.Exit(1)
-}
-
-func main() {
-	flag.Usage = usage
-	flag.Parse()
-
-	if len(flag.Args()) != 2 {
-		usage()
-	}
-
-	in_data := ReadFileOrDie(argv[opt_idx])
-	var out_data []byte
-
-	var params Params
-	params.butteraugli_target = float32(ButteraugliScoreForQuality(quality))
-
-	var stats ProcessStats
-
-	if *flagVerbose {
-		stats.debug_output_file = os.Stderr
-	}
-
-	kPNGMagicBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
-	if len(in_data) >= 8 && bytes.Equal(in_data[:8], kPNGMagicBytes) {
-		var xsize, ysize int
-		var rgb []byte
-		var ok bool
-		if ok, xsize, ysize, rgb := ReadPNG(in_data); !ok {
-			log.Fatalln("Error reading PNG data from input file\n")
-		}
-		pixels := float64(xsize * ysize)
-		if memlimit_mb != -1 &&
-			(pixels*kBytesPerPixel/(1<<20) > memlimit_mb ||
-				memlimit_mb < kLowestMemusageMB) {
-			log.Fatalln("Memory limit would be exceeded. Failing.\n")
-		}
-		if !Process(params, &stats, rgb, xsize, ysize, &out_data) {
-			log.Fatalln("Guetzli processing failed\n")
-			return 1
-		}
-	} else {
-		var jpg_header JPEGData
-		if !ReadJpeg(in_data, JPEG_READ_HEADER, &jpg_header) {
-			log.Fatalln("Error reading JPG data from input file\n")
-			return 1
-		}
-		pixels := float64(jpg_header.width) * jpg_header.height
-		if memlimit_mb != -1 &&
-			(pixels*kBytesPerPixel/(1<<20) > memlimit_mb ||
-				memlimit_mb < kLowestMemusageMB) {
-			log.Fatalln("Memory limit would be exceeded. Failing.\n")
-			return 1
-		}
-		if !Process(params, &stats, in_data, &out_data) {
-			log.Fatalln("Guetzli processing failed\n")
-			return 1
-		}
-	}
-
-	WriteFileOrDie(argv[opt_idx+1], out_data)
-	return 0
 }

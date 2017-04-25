@@ -163,5 +163,3 @@ var (
 	Log2FloorNonZero func(uint32) int
 	Log2Floor        func(uint32) int
 )
-
-// func (*Processor) OutputJpeg(*JPEGData, *string) { panic("Not Yet Implemented") }

@@ -894,7 +894,7 @@ func ProcessJpegData(params *Params, jpg_in *JPEGData,
 	return processor.ProcessJpegData(params, jpg_in, comparator, out, stats)
 }
 
-func Process_(params *Params, stats *ProcessStats, data []byte) (ok bool, jpg_out string) {
+func Process(params *Params, stats *ProcessStats, data []byte) (ok bool, jpg_out string) {
 	var jpg JPEGData
 	if !ReadJpeg(data, JPEG_READ_ALL, &jpg) {
 		log.Printf("Can't read jpg data from input file\n")
@@ -925,7 +925,7 @@ func Process_(params *Params, stats *ProcessStats, data []byte) (ok bool, jpg_ou
 	return ok, jpg_out
 }
 
-func Process__(params *Params, stats *ProcessStats, rgb []byte, w, h int) (ok bool, jpg_out string) {
+func Process_(params *Params, stats *ProcessStats, rgb []byte, w, h int) (ok bool, jpg_out string) {
 	var jpg JPEGData
 	if !EncodeRGBToJpeg(rgb, w, h, &jpg) {
 		log.Printf("Could not create jpg data from rgb pixels\n")
