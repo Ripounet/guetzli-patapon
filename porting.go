@@ -159,7 +159,7 @@ var stderr = os.Stderr
 //
 
 var (
-	GUETZLI_LOG      = func(x ...interface{}) {}
+	GUETZLI_LOG      = func(x ...interface{}) { fmt.Println(x...) }
 	Log2FloorNonZero func(uint32) int
 	Log2Floor        func(uint32) int
 )
