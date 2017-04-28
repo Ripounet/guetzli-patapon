@@ -115,8 +115,11 @@ func (oic *OutputImageComponent) ToPixels(xmin, ymin, xsize, ysize int, out []by
 		xend0 := std_min(xend1, oic.width_)
 		x := xmin
 		px := y*oic.width_ + xmin
-		for ; x < xend0; x, px, out = x+1, px+1, out[stride:] {
+		for ; x < xend0; x, px = x+1, px+1 {
 			out[0] = byte((int(oic.pixels_[px]) + 8 - (x & 1)) >> 4)
+			if stride <= len(out) {
+				out = out[stride:]
+			}
 		}
 		offset := -stride
 		for ; x < xend1; x++ {
