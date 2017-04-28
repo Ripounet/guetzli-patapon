@@ -27,7 +27,7 @@ func DecodeJpegToRGB(jpg *JPEGData) []byte {
 	if len(jpg.components) == 1 ||
 		(len(jpg.components) == 3 &&
 			HasYCbCrColorSpace(jpg) && (jpg.Is420() || jpg.Is444())) {
-		img := OutputImage{width_: jpg.width, height_: jpg.height}
+		img := NewOutputImage(jpg.width, jpg.height)
 		img.CopyFromJpegData(jpg)
 		return img.ToSRGB_()
 	}

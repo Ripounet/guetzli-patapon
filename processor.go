@@ -838,9 +838,9 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 	{
 		jpg := *jpg_in
 		RemoveOriginalQuantization(&jpg, q_in[:])
-		img := OutputImage{width_: jpg.width, height_: jpg.height}
+		img := NewOutputImage(jpg.width, jpg.height)
 		img.CopyFromJpegData(&jpg)
-		p.comparator_.Compare(&img)
+		p.comparator_.Compare(img)
 	}
 	p.MaybeOutput(encoded_jpg)
 	try_420 := 0
@@ -854,15 +854,15 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 	for downsample := force_420; downsample <= try_420; downsample++ {
 		jpg := *jpg_in
 		RemoveOriginalQuantization(&jpg, q_in[:])
-		img := OutputImage{width_: jpg.width, height_: jpg.height}
+		img := NewOutputImage(jpg.width, jpg.height)
 		img.CopyFromJpegData(&jpg)
 		if downsample != 0 {
-			p.DownsampleImage(&img)
+			p.DownsampleImage(img)
 			img.SaveToJpegData(&jpg)
 		}
 		var best_q [3][kDCTBlockSize]int
 		copy(best_q[:], q_in[:])
-		if !p.SelectQuantMatrix(&jpg, downsample != 0, best_q[:], &img) {
+		if !p.SelectQuantMatrix(&jpg, downsample != 0, best_q[:], img) {
 			for c := 0; c < 3; c++ {
 				for i := 0; i < kDCTBlockSize; i++ {
 					best_q[c][i] = 1
@@ -873,14 +873,14 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 		img.ApplyGlobalQuantization(best_q[:])
 
 		if downsample == 0 {
-			p.SelectFrequencyMasking(&jpg, &img, 7, 1.0, false)
+			p.SelectFrequencyMasking(&jpg, img, 7, 1.0, false)
 		} else {
 			ymul := 0.97
 			if len(jpg.components) == 1 {
 				ymul = 1.0
 			}
-			p.SelectFrequencyMasking(&jpg, &img, 1, ymul, false)
-			p.SelectFrequencyMasking(&jpg, &img, 6, 1.0, true)
+			p.SelectFrequencyMasking(&jpg, img, 1, ymul, false)
+			p.SelectFrequencyMasking(&jpg, img, 6, 1.0, true)
 		}
 	}
 
