@@ -819,6 +819,8 @@ func ProcessScan(data []byte, length int,
 	var Al, Ah, Ss, Se int
 	if is_progressive {
 		Al, Ah, Ss, Se = scan_info.Al, scan_info.Ah, scan_info.Ss, scan_info.Se
+	} else {
+		Al, Ah, Ss, Se = 0, 0, 0, 63
 	}
 	var scan_bitmask uint16
 	if Ah == 0 {
