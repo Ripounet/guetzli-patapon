@@ -187,14 +187,12 @@ var kRangeLimitLut = [4 * 256]byte{
 	255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 }
 
-var kRangeLimit = kRangeLimitLut[384:]
-
 func ColorTransformYCbCrToRGB(pixel []byte) {
 	GUETZLI_LOG("ColorTransformYCbCrToRGB")
 	y := int(pixel[0])
 	cb := int(pixel[1])
 	cr := int(pixel[2])
-	pixel[0] = kRangeLimit[y+kCrToRedTable[cr]]
-	pixel[1] = kRangeLimit[y+((kCrToGreenTable[cr]+kCbToGreenTable[cb])>>16)]
-	pixel[2] = kRangeLimit[y+kCbToBlueTable[cb]]
+	pixel[0] = kRangeLimitLut[384+y+kCrToRedTable[cr]]
+	pixel[1] = kRangeLimitLut[384+y+((kCrToGreenTable[cr]+kCbToGreenTable[cb])>>16)]
+	pixel[2] = kRangeLimitLut[384+y+kCbToBlueTable[cb]]
 }
