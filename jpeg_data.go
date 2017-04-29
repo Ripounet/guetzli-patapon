@@ -261,7 +261,7 @@ func SaveQuantTables(q [][kDCTBlockSize]int, jpg *JPEGData) {
 			}
 		}
 		if !found {
-			var table JPEGQuantTable
+			table := NewJPEGQuantTable()
 			copy(table.values[:], q[i][:])
 			table.precision = 0
 			for k := 0; k < kDCTBlockSize; k++ {
