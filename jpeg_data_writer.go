@@ -430,7 +430,7 @@ func BuildAndEncodeHuffmanCodes(jpg *JPEGData, out JPEGOutput) (ok bool, dc_huff
 		histograms = append(histograms, *h)
 	}
 	// depths.resize((num_dc_histo + ncomps) * JpegHistogram_kSize)
-	for len(depths) < num_dc_histo+ncomps {
+	for len(depths) < (num_dc_histo+ncomps)*JpegHistogram_kSize {
 		depths = append(depths, 0)
 	}
 	BuildACHistograms(jpg, histograms[num_dc_histo:])
