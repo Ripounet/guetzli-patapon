@@ -200,6 +200,26 @@ func NewJPEGData() JPEGData {
 	}
 }
 
+// In C++,
+//   jpg := *jpg_in
+// would copy all the lists contents.
+// But in go we must be explicit.
+func (data *JPEGData) clone() *JPEGData {
+	data2 := new(JPEGData)
+	*data2 = *data
+	data2.app_data = make([]string, len(data.app_data))
+	data2.app_data = make([]string, len(data.app_data))
+	data2.com_data = make([]string, len(data.com_data))
+	data2.quant = make([]JPEGQuantTable, len(data.quant))
+	data2.huffman_code = make([]JPEGHuffmanCode, len(data.huffman_code))
+	data2.components = make([]JPEGComponent, len(data.components))
+	data2.scan_info = make([]JPEGScanInfo, len(data.scan_info))
+	data2.marker_order = make([]byte, len(data.marker_order))
+	data2.inter_marker_data = make([]string, len(data.inter_marker_data))
+	data2.original_jpg = make([]byte, len(data.original_jpg))
+	return data2
+}
+
 func (data *JPEGData) Is420() bool {
 	return len(data.components) == 3 &&
 		data.max_h_samp_factor == 2 &&
@@ -234,7 +254,7 @@ func InitJPEGDataForYUV444(w, h int, jpg *JPEGData) {
 	jpg.quant = make([]JPEGQuantTable, 3)
 	jpg.components = make([]JPEGComponent, 3)
 	for i := 0; i < 3; i++ {
-		c := jpg.components[i]
+		c := &jpg.components[i]
 		c.id = i
 		c.h_samp_factor = 1
 		c.v_samp_factor = 1
@@ -250,7 +270,7 @@ func SaveQuantTables(q [][kDCTBlockSize]int, jpg *JPEGData) {
 	jpg.quant = nil
 	num_tables := 0
 	for i := 0; i < len(jpg.components); i++ {
-		comp := jpg.components[i]
+		comp := &jpg.components[i]
 		// Check if we have this quant table already.
 		found := false
 		for j := 0; j < num_tables; j++ {

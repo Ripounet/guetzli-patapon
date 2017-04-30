@@ -60,7 +60,7 @@ type Processor struct {
 
 func RemoveOriginalQuantization(jpg *JPEGData, q_in [][kDCTBlockSize]int) {
 	for i := 0; i < 3; i++ {
-		c := jpg.components[i]
+		c := &jpg.components[i]
 		q := jpg.quant[c.quant_idx].values
 		copy(q_in[i][:kDCTBlockSize], q)
 		for j := 0; j < len(c.coeffs); j++ {
@@ -305,9 +305,9 @@ func (p *Processor) TryQuantMatrix(jpg_in *JPEGData,
 	img.ApplyGlobalQuantization(data.q[:])
 	var buf []byte
 	{
-		jpg_out := *jpg_in
-		img.SaveToJpegData(&jpg_out)
-		buf = p.OutputJpeg(&jpg_out)
+		jpg_out := jpg_in.clone()
+		img.SaveToJpegData(jpg_out)
+		buf = p.OutputJpeg(jpg_out)
 	}
 	encoded_jpg := string(buf)
 	// GUETZLI_LOG(stats_, "Iter %2d: %s quantization matrix:\n",
@@ -588,11 +588,11 @@ func (p *Processor) SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 	ac_histograms := make([]JpegHistogram, ncomp)
 	var jpg_header_size, dc_size int
 	{
-		jpg_out := *jpg
-		img.SaveToJpegData(&jpg_out)
-		jpg_header_size = JpegHeaderSize(&jpg_out, p.params_.clear_metadata)
-		dc_size = EstimateDCSize(&jpg_out)
-		BuildACHistograms(&jpg_out, ac_histograms)
+		jpg_out := jpg.clone()
+		img.SaveToJpegData(jpg_out)
+		jpg_header_size = JpegHeaderSize(jpg_out, p.params_.clear_metadata)
+		dc_size = EstimateDCSize(jpg_out)
+		BuildACHistograms(jpg_out, ac_histograms)
 	}
 	ac_histogram_size, ac_depths := ComputeEntropyCodes(ac_histograms)
 	base_size := jpg_header_size + dc_size + ac_histogram_size +
@@ -754,9 +754,9 @@ func (p *Processor) SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 			}
 			var encoded_jpg string
 			{
-				jpg_out := *jpg
-				img.SaveToJpegData(&jpg_out)
-				encoded_jpg_bytes := p.OutputJpeg(&jpg_out)
+				jpg_out := jpg.clone()
+				img.SaveToJpegData(jpg_out)
+				encoded_jpg_bytes := p.OutputJpeg(jpg_out)
 				encoded_jpg = string(encoded_jpg_bytes)
 			}
 			// GUETZLI_LOG(stats_,
@@ -825,7 +825,7 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 	// with a good enough quality.
 	encoded_jpg := string(p.OutputJpeg(jpg_in))
 	p.final_output_.score = -1
-	GUETZLI_LOG(stats, "Original Out[%7zd]", len(encoded_jpg))
+	GUETZLI_LOG(stats, "Original Out[", len(encoded_jpg), "]")
 	if p.comparator_ == nil {
 		GUETZLI_LOG(stats, " <image too small for Butteraugli>\n")
 		p.final_output_.jpeg_data = encoded_jpg
@@ -836,10 +836,10 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 		return true
 	}
 	{
-		jpg := *jpg_in
-		RemoveOriginalQuantization(&jpg, q_in[:])
+		jpg := jpg_in.clone()
+		RemoveOriginalQuantization(jpg, q_in[:])
 		img := NewOutputImage(jpg.width, jpg.height)
-		img.CopyFromJpegData(&jpg)
+		img.CopyFromJpegData(jpg)
 		p.comparator_.Compare(img)
 	}
 	p.MaybeOutput(encoded_jpg)
@@ -852,35 +852,35 @@ func (p *Processor) ProcessJpegData(params *Params, jpg_in *JPEGData,
 		force_420 = 1
 	}
 	for downsample := force_420; downsample <= try_420; downsample++ {
-		jpg := *jpg_in
-		RemoveOriginalQuantization(&jpg, q_in[:])
+		jpg := jpg_in.clone()
+		RemoveOriginalQuantization(jpg, q_in[:])
 		img := NewOutputImage(jpg.width, jpg.height)
-		img.CopyFromJpegData(&jpg)
+		img.CopyFromJpegData(jpg)
 		if downsample != 0 {
 			p.DownsampleImage(img)
-			img.SaveToJpegData(&jpg)
+			img.SaveToJpegData(jpg)
 		}
 		var best_q [3][kDCTBlockSize]int
 		copy(best_q[:], q_in[:])
-		if !p.SelectQuantMatrix(&jpg, downsample != 0, best_q[:], img) {
+		if !p.SelectQuantMatrix(jpg, downsample != 0, best_q[:], img) {
 			for c := 0; c < 3; c++ {
 				for i := 0; i < kDCTBlockSize; i++ {
 					best_q[c][i] = 1
 				}
 			}
 		}
-		img.CopyFromJpegData(&jpg)
+		img.CopyFromJpegData(jpg)
 		img.ApplyGlobalQuantization(best_q[:])
 
 		if downsample == 0 {
-			p.SelectFrequencyMasking(&jpg, img, 7, 1.0, false)
+			p.SelectFrequencyMasking(jpg, img, 7, 1.0, false)
 		} else {
 			ymul := 0.97
 			if len(jpg.components) == 1 {
 				ymul = 1.0
 			}
-			p.SelectFrequencyMasking(&jpg, img, 1, ymul, false)
-			p.SelectFrequencyMasking(&jpg, img, 6, 1.0, true)
+			p.SelectFrequencyMasking(jpg, img, 1, ymul, false)
+			p.SelectFrequencyMasking(jpg, img, 6, 1.0, true)
 		}
 	}
 
