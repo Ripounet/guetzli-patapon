@@ -137,6 +137,16 @@ func resizeSliceFloat32(a []float32, n int) []float32 {
 	return grown
 }
 
+// Mimicks std::vector<std::vector>.resize()
+func resizeMatrixFloat32(a [][]float32, n int) [][]float32 {
+	if len(a) >= n {
+		return a[:n:n]
+	}
+	grown := make([][]float32, n)
+	copy(grown, a)
+	return grown
+}
+
 func sqrt32(x float32) float32 {
 	return float32(math.Sqrt(float64(x)))
 }

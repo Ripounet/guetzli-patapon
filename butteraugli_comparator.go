@@ -79,9 +79,10 @@ func (bc *ButteraugliComparator) distmap_aggregate() float32 {
 }
 
 func (bc *ButteraugliComparator) StartBlockComparisons() {
+	dummy := make([][]float32, 3)
 	Mask(bc.rgb_linear_pregamma_, bc.rgb_linear_pregamma_,
 		bc.width_, bc.height_,
-		bc.mask_xyz_, nil)
+		&bc.mask_xyz_, &dummy)
 }
 
 func (bc *ButteraugliComparator) FinishBlockComparisons() {

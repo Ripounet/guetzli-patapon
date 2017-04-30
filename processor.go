@@ -921,9 +921,9 @@ func Process(params *Params, stats *ProcessStats, data []byte) (ok bool, jpg_out
 		return false, ""
 	}
 	var out GuetzliOutput
-	var dummy_stats ProcessStats
 	if stats == nil {
-		stats = &dummy_stats
+		dummy_stats := NewProcessStats()
+		stats = dummy_stats
 	}
 	var comparator *ButteraugliComparator
 	if jpg.width >= 32 && jpg.height >= 32 {

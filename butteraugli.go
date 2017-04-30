@@ -1029,7 +1029,7 @@ func (bbc *ButteraugliButteraugliComparator) DiffmapOpsinDynamicsImage(xyb0_arg,
 	{
 		mask_xyb := make([][]float32, 3)
 		mask_xyb_dc := make([][]float32, 3)
-		Mask(xyb0, xyb1, bbc.xsize_, bbc.ysize_, mask_xyb, mask_xyb_dc)
+		Mask(xyb0, xyb1, bbc.xsize_, bbc.ysize_, &mask_xyb, &mask_xyb_dc)
 		result = bbc.CombineChannels(mask_xyb, mask_xyb_dc, block_diff_dc, block_diff_ac, edge_detector_map)
 	}
 	result = CalculateDiffmap(bbc.xsize_, bbc.ysize_, bbc.step_, result)
@@ -1343,6 +1343,7 @@ func Average5x5(xsize, ysize int, diffs []float32) {
 			result[rowu1+xsize-2] += tmp1[row0+xsize-1]
 		}
 	}
+	assert(len(diffs) == len(result))
 	copy(diffs, result)
 	ScaleImage(float64(scale), diffs)
 }
@@ -1398,54 +1399,57 @@ func DiffPrecompute(xyb0, xyb1 [][]float32, xsize, ysize int, mask [][]float32) 
 	}
 }
 
-func Mask(xyb0, xyb1 [][]float32, xsize, ysize int, mask, mask_dc [][]float32) {
+// mask, mask_dc are pointers (both input and output)
+// TODO PATAPON: turn them into output parameters?
+func Mask(xyb0, xyb1 [][]float32, xsize, ysize int, mask, mask_dc *[][]float32) {
 	//PROFILER_FUNC;
-	assert(len(mask) == 3)    // TODO PATAPON: always?
-	assert(len(mask_dc) == 3) // TODO PATAPON: always?
+	GUETZLI_LOG(len(*mask), len(*mask_dc))
+	// assert(len(*mask) == 3)    // TODO PATAPON: always?
+	assert(len(*mask_dc) == 3) // TODO PATAPON: always?
 
-	mask = mask[:3]
+	*mask = resizeMatrixFloat32(*mask, 3)
 	for i := 0; i < 3; i++ {
-		mask[i] = resizeSliceFloat32(mask[i], xsize*ysize)
+		(*mask)[i] = resizeSliceFloat32((*mask)[i], xsize*ysize)
 	}
-	DiffPrecompute(xyb0, xyb1, xsize, ysize, mask)
+	DiffPrecompute(xyb0, xyb1, xsize, ysize, *mask)
 	for i := 0; i < 3; i++ {
-		Average5x5(xsize, ysize, mask[i])
-		MinSquareVal(4, 0, xsize, ysize, mask[i])
+		Average5x5(xsize, ysize, (*mask)[i])
+		MinSquareVal(4, 0, xsize, ysize, (*mask)[i])
 		sigma := [3]float64{
 			9.65781083553,
 			14.2644604355,
 			4.53358927369,
 		}
-		Blur(xsize, ysize, mask[i], sigma[i], 0.0)
+		Blur(xsize, ysize, (*mask)[i], sigma[i], 0.0)
 	}
 	const w00 = 232.206464018
 	const w11 = 22.9455222245
 	const w22 = 503.962310606
 
-	mask_dc = mask_dc[:3]
+	*mask_dc = resizeMatrixFloat32(*mask_dc, 3)
 	for i := 0; i < 3; i++ {
-		mask_dc[i] = make([]float32, xsize*ysize)
+		(*mask_dc)[i] = resizeSliceFloat32((*mask_dc)[i], xsize*ysize)
 	}
 	for y := 0; y < ysize; y++ {
 		for x := 0; x < xsize; x++ {
 			idx := y*xsize + x
-			s0 := mask[0][idx]
-			s1 := mask[1][idx]
-			s2 := mask[2][idx]
+			s0 := (*mask)[0][idx]
+			s1 := (*mask)[1][idx]
+			s2 := (*mask)[2][idx]
 			p0 := w00 * float64(s0)
 			p1 := w11 * float64(s1)
 			p2 := w22 * float64(s2)
 
-			mask[0][idx] = float32(MaskX(p0))
-			mask[1][idx] = float32(MaskY(p1))
-			mask[2][idx] = float32(MaskB(p2))
-			mask_dc[0][idx] = float32(MaskDcX(p0))
-			mask_dc[1][idx] = float32(MaskDcY(p1))
-			mask_dc[2][idx] = float32(MaskDcB(p2))
+			(*mask)[0][idx] = float32(MaskX(p0))
+			(*mask)[1][idx] = float32(MaskY(p1))
+			(*mask)[2][idx] = float32(MaskB(p2))
+			(*mask_dc)[0][idx] = float32(MaskDcX(p0))
+			(*mask_dc)[1][idx] = float32(MaskDcY(p1))
+			(*mask_dc)[2][idx] = float32(MaskDcB(p2))
 		}
 	}
 	for i := 0; i < 3; i++ {
-		ScaleImage(kGlobalScale*kGlobalScale, mask[i])
-		ScaleImage(kGlobalScale*kGlobalScale, mask_dc[i])
+		ScaleImage(kGlobalScale*kGlobalScale, (*mask)[i])
+		ScaleImage(kGlobalScale*kGlobalScale, (*mask_dc)[i])
 	}
 }

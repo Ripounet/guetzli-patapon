@@ -35,7 +35,7 @@ func VERIFY_INPUT(var_, low, high int, code string) bool {
 }
 
 func VERIFY_MARKER_END(pos *int, start_pos, marker_len int) bool {
-	GUETZLI_LOG("  VERIFY_MARKER_END", *pos, start_pos, marker_len)
+	// GUETZLI_LOG("  VERIFY_MARKER_END", *pos, start_pos, marker_len)
 	if start_pos+marker_len != *pos {
 		fprintf(stderr, "Invalid marker length: declared=%d actual=%d\n",
 			int(marker_len),
@@ -48,7 +48,7 @@ func VERIFY_MARKER_END(pos *int, start_pos, marker_len int) bool {
 }
 
 func EXPECT_MARKER(pos int, length int, data []byte) bool {
-	GUETZLI_LOG("  EXPECT_MARKER", pos, length)
+	// GUETZLI_LOG("  EXPECT_MARKER", pos, length)
 	if pos+2 > length || data[pos] != 0xff {
 		found := byte(0)
 		if pos < length {
@@ -94,7 +94,7 @@ func ReadUint16(data []byte, pos *int) int {
 // parsed data.
 func ProcessSOF(data []byte, length int,
 	mode JpegReadMode, pos *int, jpg *JPEGData) bool {
-	GUETZLI_LOG(" ProcessSOF(data, ", length, mode, *pos, ", jpg)")
+	// GUETZLI_LOG(" ProcessSOF(data, ", length, mode, *pos, ", jpg)")
 	if jpg.width != 0 {
 		fprintf(stderr, "Duplicate SOF marker.\n")
 		jpg.err = JPEG_DUPLICATE_SOF
@@ -345,14 +345,14 @@ func ProcessDHT(data []byte, length int, mode JpegReadMode,
 // Reads the Define Quantization Table (DQT) marker segment and fills in *jpg
 // with the parsed data.
 func ProcessDQT(data []byte, length int, pos *int, jpg *JPEGData) bool {
-	GUETZLI_LOG(" ProcessDQT(data, ", len(data), *pos, ")")
+	// GUETZLI_LOG(" ProcessDQT(data, ", len(data), *pos, ")")
 	start_pos := *pos
 	VERIFY_LEN(pos, 2, length)
 	marker_len := ReadUint16(data, pos)
 	if marker_len == 2 {
 		fprintf(stderr, "DQT marker: no quantization table found\n")
 		jpg.err = JPEG_EMPTY_DQT
-		GUETZLI_LOG(" ProcessDQT returns false")
+		// GUETZLI_LOG(" ProcessDQT returns false")
 		return false
 	}
 	for *pos < start_pos+marker_len && len(jpg.quant) < kMaxQuantTables {
@@ -384,14 +384,14 @@ func ProcessDQT(data []byte, length int, pos *int, jpg *JPEGData) bool {
 		jpg.quant = append(jpg.quant, table)
 	}
 	VERIFY_MARKER_END(pos, start_pos, marker_len)
-	GUETZLI_LOG(" ProcessDQT returns true")
+	// GUETZLI_LOG(" ProcessDQT returns true")
 	return true
 }
 
 // Reads the DRI marker and saved the restart interval into *jpg.
 func ProcessDRI(data []byte, length int, pos *int,
 	jpg *JPEGData) bool {
-	GUETZLI_LOG(" ProcessDRI(data, ", length, *pos, ")")
+	// GUETZLI_LOG(" ProcessDRI(data, ", length, *pos, ")")
 	if jpg.restart_interval > 0 {
 		fprintf(stderr, "Duplicate DRI marker.\n")
 		jpg.err = JPEG_DUPLICATE_DRI
@@ -409,7 +409,7 @@ func ProcessDRI(data []byte, length int, pos *int,
 // Saves the APP marker segment as a string to *jpg.
 func ProcessAPP(data []byte, length int, pos *int,
 	jpg *JPEGData) bool {
-	GUETZLI_LOG(" ProcessAPP(data, ", length, *pos, ")")
+	// GUETZLI_LOG(" ProcessAPP(data, ", length, *pos, ")")
 	VERIFY_LEN(pos, 2, length)
 	marker_len := ReadUint16(data, pos)
 	VERIFY_INPUT(marker_len, 2, 65535, "MARKER_LEN")
@@ -424,7 +424,7 @@ func ProcessAPP(data []byte, length int, pos *int,
 
 // Saves the COM marker segment as a string to *jpg.
 func ProcessCOM(data []byte, length int, pos *int, jpg *JPEGData) bool {
-	GUETZLI_LOG(" ProcessCOM(data, ", length, *pos, ")")
+	// GUETZLI_LOG(" ProcessCOM(data, ", length, *pos, ")")
 	VERIFY_LEN(pos, 2, length)
 	marker_len := ReadUint16(data, pos)
 	VERIFY_INPUT(marker_len, 2, 65535, "MARKER_LEN")
@@ -535,11 +535,12 @@ func (br *BitReaderState) FinishStream(pos *int) bool {
 
 // Returns the next Huffman-coded symbol.
 func ReadSymbol(table []HuffmanTableEntry, br *BitReaderState) int {
-	GUETZLI_LOG("ReadSymbol(table len", len(table), ", ", br)
+	// GUETZLI_LOG("  ReadSymbol(table len", len(table), ", ", br)
 	var nbits int
 	br.FillBitWindow()
 	val := (br.val_ >> uint(br.bits_left_-8)) & 0xff
 	table = table[val:]
+	// GUETZLI_LOG("    entry=", table[0])
 	nbits = int(table[0].bits) - 8
 	if nbits > 0 {
 		br.bits_left_ -= 8
@@ -548,7 +549,7 @@ func ReadSymbol(table []HuffmanTableEntry, br *BitReaderState) int {
 		table = table[val:]
 	}
 	br.bits_left_ -= int(table[0].bits)
-	GUETZLI_LOG("ReadSymbol returns", int(table[0].value))
+	// GUETZLI_LOG("  ReadSymbol returns", int(table[0].value))
 	return int(table[0].value)
 }
 
@@ -569,6 +570,7 @@ func DecodeDCTBlock(dc_huff, ac_huff []HuffmanTableEntry,
 	br *BitReaderState,
 	jpg *JPEGData,
 	last_dc_coeff, coeffs []coeff_t) bool {
+	// GUETZLI_LOG(" DecodeDCTBlock(dc, ac,", Ss, Se, Al, "...)")
 	var s, r int
 	eobrun_allowed := Ss > 0
 	if Ss == 0 {
@@ -950,7 +952,7 @@ func FixupIndexes(jpg *JPEGData) bool {
 
 func FindNextMarker(data []byte, length, pos int) int {
 	// kIsValidMarker[i] == 1 means (0xc0 + i) is a valid marker.
-	length_, pos_ := length, pos
+	// length_, pos_ := length, pos
 	kIsValidMarker := []uint8{
 		1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0,
@@ -964,7 +966,7 @@ func FindNextMarker(data []byte, length, pos int) int {
 		pos++
 		num_skipped++
 	}
-	GUETZLI_LOG(" FindNextMarker(data", length_, pos_, ") ==", num_skipped)
+	// GUETZLI_LOG(" FindNextMarker(data", length_, pos_, ") ==", num_skipped)
 	return num_skipped
 }
 
@@ -1000,7 +1002,7 @@ func ReadJpeg(data []byte, mode JpegReadMode, jpg *JPEGData) bool {
 		}
 		EXPECT_MARKER(pos, length, data)
 		marker = data[pos+1]
-		GUETZLI_LOG(" Process marker ", marker)
+		// GUETZLI_LOG(" Process marker ", marker)
 		pos += 2
 		ok := true
 		switch marker {
