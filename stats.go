@@ -15,3 +15,9 @@ type ProcessStats struct {
 
 	filename string
 }
+
+func NewProcessStats() *ProcessStats {
+	stats := new(ProcessStats)
+	stats.counters = make(map[string]int)
+	return stats
+}

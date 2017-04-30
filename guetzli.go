@@ -68,7 +68,7 @@ func Main() {
 	var params Params
 	params.butteraugli_target = float32(ButteraugliScoreForQuality(float64(*flagQuality)))
 
-	var stats ProcessStats
+	stats := NewProcessStats()
 
 	if *flagVerbose {
 		stats.debug_output_file = os.Stderr
@@ -118,7 +118,7 @@ func Main() {
 	case "jpeg":
 		var ok bool
 		var out_data_str string
-		if ok, out_data_str = Process(&params, &stats, in_data); !ok {
+		if ok, out_data_str = Process(&params, stats, in_data); !ok {
 			log.Fatalln("Guetzli processing failed\n")
 		}
 		out_data = []byte(out_data_str)
