@@ -945,7 +945,7 @@ func ScaleImage(scale float64, result []float32) {
 
 // Making a cluster of local errors to be more impactful than
 // just a single error.
-func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) {
+func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) []float32 {
 	// PROFILER_FUNC;
 
 	// Shift the diffmap more correctly above the pixels, from 2.5 pixels to 0.5
@@ -954,9 +954,10 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) {
 	// values have no meaning, they only exist to keep the result map the same
 	// size as the input images.
 	s2 := (8 - step) / 2
+	var diffmap_out []float32
 	{
 		// Upsample and take square root.
-		diffmap_out := make([]float32, xsize*ysize)
+		diffmap_out = make([]float32, xsize*ysize)
 		res_xsize := (xsize + step - 1) / step
 		for res_y := 0; res_y+8-step < ysize; res_y += step {
 			for res_x := 0; res_x+8-step < xsize; res_x += step {
@@ -979,9 +980,10 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) {
 				}
 			}
 		}
-		copy(diffmap, diffmap_out)
+		// *diffmap = diffmap_out;   see returned value instead
 	}
 	{
+		diffmap := diffmap_out
 		const kSigma = 8.8510880283
 		const mul1 = 24.8235314874
 		const scale = 1.0 / (1.0 + mul1)
@@ -1001,6 +1003,7 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) {
 		}
 		ScaleImage(scale, diffmap)
 	}
+	return diffmap_out
 }
 
 func (bbc *ButteraugliButteraugliComparator) DiffmapOpsinDynamicsImage(xyb0_arg, xyb1 [][]float32) (result []float32) {
@@ -1029,7 +1032,7 @@ func (bbc *ButteraugliButteraugliComparator) DiffmapOpsinDynamicsImage(xyb0_arg,
 		Mask(xyb0, xyb1, bbc.xsize_, bbc.ysize_, mask_xyb, mask_xyb_dc)
 		result = bbc.CombineChannels(mask_xyb, mask_xyb_dc, block_diff_dc, block_diff_ac, edge_detector_map)
 	}
-	CalculateDiffmap(bbc.xsize_, bbc.ysize_, bbc.step_, result)
+	result = CalculateDiffmap(bbc.xsize_, bbc.ysize_, bbc.step_, result)
 	return result
 }
 
