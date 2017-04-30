@@ -338,12 +338,12 @@ func (p *Processor) SelectQuantMatrix(jpg_in *JPEGData, downsample bool,
 
 	best := p.TryQuantMatrix(jpg_in, target_mul_high, best_q, img)
 	for {
-		var q_next [][kDCTBlockSize]int
-		if !qgen.GetNext(q_next) {
+		var q_next [3][kDCTBlockSize]int
+		if !qgen.GetNext(q_next[:]) {
 			break
 		}
 
-		data := p.TryQuantMatrix(jpg_in, target_mul_high, q_next, img)
+		data := p.TryQuantMatrix(jpg_in, target_mul_high, q_next[:], img)
 		qgen.Add(&data)
 		if CompareQuantData(&data, &best) {
 			best = data
