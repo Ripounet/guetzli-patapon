@@ -945,7 +945,7 @@ func ScaleImage(scale float64, result []float32) {
 
 // Making a cluster of local errors to be more impactful than
 // just a single error.
-func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) []float32 {
+func CalculateDiffmap(xsize, ysize, step int, diffmap *[]float32) {
 	// PROFILER_FUNC;
 
 	// Shift the diffmap more correctly above the pixels, from 2.5 pixels to 0.5
@@ -954,15 +954,14 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) []float32 {
 	// values have no meaning, they only exist to keep the result map the same
 	// size as the input images.
 	s2 := (8 - step) / 2
-	var diffmap_out []float32
 	{
 		// Upsample and take square root.
-		diffmap_out = make([]float32, xsize*ysize)
+		diffmap_out := make([]float32, xsize*ysize)
 		res_xsize := (xsize + step - 1) / step
 		for res_y := 0; res_y+8-step < ysize; res_y += step {
 			for res_x := 0; res_x+8-step < xsize; res_x += step {
 				res_ix := (res_y*res_xsize + res_x) / step
-				orig_val := diffmap[res_ix]
+				orig_val := (*diffmap)[res_ix]
 				const kInitialSlope = 100.0
 				// TODO(b/29974893): Until that is fixed do not call sqrt on very small
 				// numbers.
@@ -980,10 +979,9 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) []float32 {
 				}
 			}
 		}
-		// *diffmap = diffmap_out;   see returned value instead
+		*diffmap = diffmap_out
 	}
 	{
-		diffmap := diffmap_out
 		const kSigma = 8.8510880283
 		const mul1 = 24.8235314874
 		const scale = 1.0 / (1.0 + mul1)
@@ -991,22 +989,21 @@ func CalculateDiffmap(xsize, ysize, step int, diffmap []float32) []float32 {
 		blurred := make([]float32, (xsize-s)*(ysize-s))
 		for y := 0; y < ysize-s; y++ {
 			for x := 0; x < xsize-s; x++ {
-				blurred[y*(xsize-s)+x] = diffmap[(y+s2)*xsize+x+s2]
+				blurred[y*(xsize-s)+x] = (*diffmap)[(y+s2)*xsize+x+s2]
 			}
 		}
 		const border_ratio = 0.03027655136
 		Blur(xsize-s, ysize-s, blurred, kSigma, border_ratio)
 		for y := 0; y < ysize-s; y++ {
 			for x := 0; x < xsize-s; x++ {
-				diffmap[(y+s2)*xsize+x+s2] += float32(mul1) * blurred[y*(xsize-s)+x]
+				(*diffmap)[(y+s2)*xsize+x+s2] += float32(mul1) * blurred[y*(xsize-s)+x]
 			}
 		}
-		ScaleImage(scale, diffmap)
+		ScaleImage(scale, *diffmap)
 	}
-	return diffmap_out
 }
 
-func (bbc *ButteraugliButteraugliComparator) DiffmapOpsinDynamicsImage(xyb0_arg, xyb1 [][]float32) (result []float32) {
+func (bbc *ButteraugliButteraugliComparator) DiffmapOpsinDynamicsImage(xyb0_arg, xyb1 [][]float32, result *[]float32) {
 	if bbc.xsize_ < 8 || bbc.ysize_ < 8 {
 		return
 	}
@@ -1030,10 +1027,9 @@ func (bbc *ButteraugliButteraugliComparator) DiffmapOpsinDynamicsImage(xyb0_arg,
 		mask_xyb := make([][]float32, 3)
 		mask_xyb_dc := make([][]float32, 3)
 		Mask(xyb0, xyb1, bbc.xsize_, bbc.ysize_, &mask_xyb, &mask_xyb_dc)
-		result = bbc.CombineChannels(mask_xyb, mask_xyb_dc, block_diff_dc, block_diff_ac, edge_detector_map)
+		bbc.CombineChannels(mask_xyb, mask_xyb_dc, block_diff_dc, block_diff_ac, edge_detector_map, result)
 	}
-	result = CalculateDiffmap(bbc.xsize_, bbc.ysize_, bbc.step_, result)
-	return result
+	CalculateDiffmap(bbc.xsize_, bbc.ysize_, bbc.step_, result)
 }
 
 func (bbc *ButteraugliButteraugliComparator) BlockDiffMap(xyb0, xyb1 [][]float32, block_diff_dc, block_diff_ac []float32) {
@@ -1148,9 +1144,10 @@ func (bbc *ButteraugliButteraugliComparator) EdgeDetectorLowFreq(xyb0, xyb1 [][]
 
 func (bbc *ButteraugliButteraugliComparator) CombineChannels(
 	mask_xyb, mask_xyb_dc [][]float32,
-	block_diff_dc, block_diff_ac, edge_detector_map []float32) (result []float32) {
+	block_diff_dc, block_diff_ac, edge_detector_map []float32,
+	result *[]float32) {
 	// PROFILER_FUNC;
-	result = make([]float32, bbc.res_xsize_*bbc.res_ysize_)
+	*result = resizeSliceFloat32(*result, bbc.res_xsize_*bbc.res_ysize_)
 	for res_y := 0; res_y+(8-bbc.step_) < bbc.ysize_; res_y += bbc.step_ {
 		for res_x := 0; res_x+(8-bbc.step_) < bbc.xsize_; res_x += bbc.step_ {
 			res_ix := (res_y*bbc.res_xsize_ + res_x) / bbc.step_
@@ -1159,13 +1156,12 @@ func (bbc *ButteraugliButteraugliComparator) CombineChannels(
 				mask[i] = float64(mask_xyb[i][(res_y+3)*bbc.xsize_+(res_x+3)])
 				dc_mask[i] = float64(mask_xyb_dc[i][(res_y+3)*bbc.xsize_+(res_x+3)])
 			}
-			result[res_ix] = float32(
+			(*result)[res_ix] = float32(
 				DotProduct_(block_diff_dc[3*res_ix:], dc_mask[:]) +
 					DotProduct_(block_diff_ac[3*res_ix:], mask[:]) +
 					DotProduct_(edge_detector_map[3*res_ix:], mask[:]))
 		}
 	}
-	return result
 }
 
 func ButteraugliScoreFromDiffmap(diffmap []float32) float64 {

@@ -28,7 +28,7 @@ func NewButteraugliComparator(width, height int,
 	bc.width_ = width
 	bc.height_ = height
 	bc.target_distance_ = target_distance
-	bc.rgb_orig_ = rgb
+	bc.rgb_orig_ = cloneSliceByte(rgb)
 	bc.rgb_linear_pregamma_ = [][]float32{
 		make([]float32, bc.width_*bc.height_),
 		make([]float32, bc.width_*bc.height_),
@@ -61,9 +61,10 @@ func (bc *ButteraugliComparator) Compare(img *OutputImage) {
 	}
 	img.ToLinearRGB_(rgb)
 	OpsinDynamicsImage(bc.width_, bc.height_, rgb)
-	bc.distmap_ = bc.comparator_.DiffmapOpsinDynamicsImage(bc.rgb_linear_pregamma_, rgb)
+	bc.comparator_.DiffmapOpsinDynamicsImage(bc.rgb_linear_pregamma_, rgb, &bc.distmap_)
 	bc.distance_ = float32(ButteraugliScoreFromDiffmap(bc.distmap_))
-	GUETZLI_LOG(bc.stats_, " BA[100.00%%] D[%6.4f]", bc.distance_)
+	// GUETZLI_LOG(bc.stats_, " BA[100.00%%] D[%6.4f]", bc.distance_)
+	fmt.Fprintf(os.Stderr, " BA[100.00%%] D[%6.4f]\n", bc.distance_)
 }
 
 func (bc *ButteraugliComparator) DistanceOK(target_mul float64) bool {
@@ -71,7 +72,8 @@ func (bc *ButteraugliComparator) DistanceOK(target_mul float64) bool {
 }
 
 func (bc *ButteraugliComparator) distmap() []float32 {
-	return bc.distmap_
+	// return bc.distmap_
+	return cloneSliceFloat32(bc.distmap_) // TODO PATAPON should this be a copy?
 }
 
 func (bc *ButteraugliComparator) distmap_aggregate() float32 {

@@ -127,6 +127,12 @@ func cloneSliceBool(src []bool) (dst []bool) {
 	return dst
 }
 
+func cloneSliceByte(src []byte) (dst []byte) {
+	dst = make([]byte, len(src))
+	copy(dst, src)
+	return dst
+}
+
 // Mimicks std::vector.resize()
 func resizeSliceFloat32(a []float32, n int) []float32 {
 	if len(a) >= n {
@@ -180,4 +186,6 @@ var stderr = os.Stderr
 
 var (
 	GUETZLI_LOG = func(x ...interface{}) { fmt.Println(x...) }
+	logx        = func(x ...interface{}) { fmt.Fprintln(os.Stderr, x...) }
+	logf        = func(format string, x ...interface{}) { fmt.Fprintf(os.Stderr, format, x...) }
 )

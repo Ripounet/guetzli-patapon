@@ -695,14 +695,14 @@ func (p *Processor) SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 			} else {
 				coeffs_to_change_per_block = float32(factor_x*factor_y) * 0.2
 			}
-			min_coeffs_to_change := coeffs_to_change_per_block * float32(blocks_to_change)
+			min_coeffs_to_change := int(coeffs_to_change_per_block * float32(blocks_to_change))
 
 			if first_up_iter {
 				limit := float32(0.75 * p.comparator_.BlockErrorLimit())
 				it := sort.Search(len(global_order), func(i int) bool {
 					return global_order[i].f >= limit
 				})
-				min_coeffs_to_change = std_maxFloat32(min_coeffs_to_change, float32(it))
+				min_coeffs_to_change = std_max(min_coeffs_to_change, it)
 				first_up_iter = false
 			}
 
@@ -743,7 +743,7 @@ func (p *Processor) SelectFrequencyMasking(jpg *JPEGData, img *OutputImage,
 				}
 				est_jpg_size = jpg_header_size + dc_size + ac_histogram_size +
 					EntropyCodedDataSize(ac_histograms, ac_depths)
-				if float32(changed_coeffs) > min_coeffs_to_change &&
+				if changed_coeffs > min_coeffs_to_change &&
 					math.Abs(float64(est_jpg_size-prev_size)) > min_size_delta {
 					break
 				}
