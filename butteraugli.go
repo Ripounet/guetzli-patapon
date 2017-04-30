@@ -1402,7 +1402,7 @@ func Mask(xyb0, xyb1 [][]float32, xsize, ysize int, mask, mask_dc [][]float32) {
 
 	mask = mask[:3]
 	for i := 0; i < 3; i++ {
-		mask[i] = mask[i][:xsize*ysize]
+		mask[i] = resizeSliceFloat32(mask[i], xsize*ysize)
 	}
 	DiffPrecompute(xyb0, xyb1, xsize, ysize, mask)
 	for i := 0; i < 3; i++ {
