@@ -208,15 +208,29 @@ func (data *JPEGData) clone() *JPEGData {
 	data2 := new(JPEGData)
 	*data2 = *data
 	data2.app_data = make([]string, len(data.app_data))
+	copy(data2.app_data, data.app_data)
 	data2.app_data = make([]string, len(data.app_data))
+	copy(data2.app_data, data.app_data)
 	data2.com_data = make([]string, len(data.com_data))
+	copy(data2.com_data, data.com_data)
 	data2.quant = make([]JPEGQuantTable, len(data.quant))
+	copy(data2.quant, data.quant)
 	data2.huffman_code = make([]JPEGHuffmanCode, len(data.huffman_code))
+	copy(data2.huffman_code, data.huffman_code)
 	data2.components = make([]JPEGComponent, len(data.components))
+	copy(data2.components, data.components)
+	for i := range data.components {
+		data2.components[i].coeffs = make([]coeff_t, len(data.components[i].coeffs))
+		copy(data2.components[i].coeffs, data.components[i].coeffs)
+	}
 	data2.scan_info = make([]JPEGScanInfo, len(data.scan_info))
+	copy(data2.scan_info, data.scan_info)
 	data2.marker_order = make([]byte, len(data.marker_order))
+	copy(data2.marker_order, data.marker_order)
 	data2.inter_marker_data = make([]string, len(data.inter_marker_data))
+	copy(data2.inter_marker_data, data.inter_marker_data)
 	data2.original_jpg = make([]byte, len(data.original_jpg))
+	copy(data2.original_jpg, data.original_jpg)
 	return data2
 }
 
