@@ -2,6 +2,7 @@ package guetzli_patapon
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"math"
 	"sort"
@@ -318,6 +319,14 @@ func (p *Processor) TryQuantMatrix(jpg_in *JPEGData,
 	//             stats_.counters[kNumItersCnt] + 1,
 	//             img.FrameTypeStr().c_str(),
 	//             QuantMatrixHeuristicScore(q), encoded_jpg.size());
+	currentstats := func() string {
+		var b bytes.Buffer
+		fmt.Fprintf(&b, "Iter %2d: %s quantization matrix:\n", p.stats_.counters[kNumItersCnt]+1, img.FrameTypeStr())
+		return b.String()
+	}
+	GUETZLI_LOG(currentstats())
+	GUETZLI_LOG_QUANT(p.stats_, q)
+
 	p.stats_.counters[kNumItersCnt]++
 	p.comparator_.Compare(img)
 	data.dist_ok = p.comparator_.DistanceOK(float64(target_mul))
